@@ -1,0 +1,9 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://x5maujh3d7np"]
+
+[ext_resource type="Shader" uid="uid://02bpl8soe28e" path="res://addons/easy-trail-2d/shaders/default_canvas_group_material.gdshader" id="1_jeyrh"]
+
+[resource]
+resource_local_to_scene = true
+shader = ExtResource("1_jeyrh")
+shader_parameter/silhouette_color = Color(0, 0, 1, 0.5)
+shader_parameter/use_canvas_group_alpha_curve = false
