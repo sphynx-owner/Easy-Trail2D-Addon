@@ -5,5 +5,3 @@
 [resource]
 resource_local_to_scene = true
 shader = ExtResource("1_jeyrh")
-shader_parameter/silhouette_color = Color(0, 0, 1, 0.5)
-shader_parameter/use_canvas_group_alpha_curve = false

@@ -4,18 +4,3 @@
 
 [resource]
 shader = ExtResource("1_rxyo3")
-shader_parameter/snapshot_resolution_scale = 1.0
-shader_parameter/particles_anim_h_frames = 0
-shader_parameter/particles_anim_v_frames = 0
-shader_parameter/use_local_sample_resolution = true
-shader_parameter/local_sample_resolution = 20.0
-shader_parameter/global_sample_resolution = 20.0
-shader_parameter/max_global_sample_resolution = 40.0
-shader_parameter/use_noise = true
-shader_parameter/use_override_offset = false
-shader_parameter/override_offset = Vector2(0, 0)
-shader_parameter/override_current_frame = 0
-shader_parameter/override_particle_lifetime = 0.0
-shader_parameter/use_canvas_group_alpha_curve = false
-shader_parameter/time_spread = 0.0
-shader_parameter/lifetime = 1.0

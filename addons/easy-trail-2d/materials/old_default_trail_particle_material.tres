@@ -1,9 +1,0 @@
-[gd_resource type="ShaderMaterial" format=3 uid="uid://bit5uyb2acihs"]
-
-[ext_resource type="Shader" uid="uid://bxykf2ftba0qx" path="res://addons/easy-trail-2d/shaders/old_trail_particle.gdshader" id="1_0fjxa"]
-
-[resource]
-shader = ExtResource("1_0fjxa")
-shader_parameter/snapshot_resolution_scale = 1.0
-shader_parameter/particles_anim_h_frames = 0
-shader_parameter/particles_anim_v_frames = 0

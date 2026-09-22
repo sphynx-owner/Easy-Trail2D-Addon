@@ -3,29 +3,29 @@ shader_type canvas_item;
 render_mode blend_add;
 
 // The resolution scale of the image, used to maintain the particle's global size
-uniform float snapshot_resolution_scale = 1.0;
+instance uniform float snapshot_resolution_scale = 1.0;
 
-uniform int particles_anim_h_frames;
-uniform int particles_anim_v_frames;
+instance uniform int particles_anim_h_frames;
+instance uniform int particles_anim_v_frames;
 
-uniform bool use_local_sample_resolution = false;
-uniform float local_sample_resolution = 5;
+instance uniform bool use_local_sample_resolution = false;
+instance uniform float local_sample_resolution = 5;
 // Per 100 world units
-uniform float global_sample_resolution = 10;
-uniform float max_global_sample_resolution = 20;
+instance uniform float global_sample_resolution = 10;
+instance uniform float max_global_sample_resolution = 20;
 
-uniform bool use_noise = true;
+instance uniform bool use_noise = true;
 
-uniform bool use_override_offset = false;
-uniform vec2 override_offset;
-uniform int override_current_frame = 0;
-uniform float override_particle_lifetime = 0;
+instance uniform bool use_override_offset = false;
+instance uniform vec2 override_offset;
+instance uniform int override_current_frame = 0;
+instance uniform float override_particle_lifetime = 0;
 
-uniform bool use_canvas_group_alpha_curve = false;
+instance uniform bool use_canvas_group_alpha_curve = false;
 uniform sampler2D alpha_curve: repeat_disable;
-uniform float time_spread;
+instance uniform float time_spread;
 
-uniform float lifetime = 1.0;
+instance uniform float lifetime = 1.0;
 
 #define EPSILON 0.0000000001
 
@@ -123,6 +123,7 @@ void fragment() {
 			COLOR = vec4(mix(COLOR, vec4(clamped_time, particle_lifetime, 0, 1), texture_sample.a).xyz, texture_sample.a + COLOR.a * (1.0 - texture_sample.a));//vec4(mix(COLOR, texture_sample, 1.0 - COLOR.a).xyz, COLOR.a + texture_sample.a * (1.0 - COLOR.a));//
 			time += time_step;
 		}
+		
 		if (use_canvas_group_alpha_curve) {
 			float relative_time_spread = time_spread / lifetime;
 			float fragment_lifetime = COLOR.r * relative_time_spread + (1. / relative_time_spread - 1.) * relative_time_spread;
