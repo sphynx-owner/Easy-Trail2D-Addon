@@ -6,8 +6,6 @@ render_mode blend_premul_alpha;
 
 #define ALPHA_DIV 0.5
 
-
-
 // The resolution scale of the image, used to maintain the particle's global size
 instance uniform float snapshot_resolution_scale = 1.0;
 
@@ -16,6 +14,8 @@ instance uniform int atlas_h_frames;
 instance uniform int atlas_v_frames;
 
 instance uniform int sample_count = 5;
+
+instance uniform int game_frame;
 
 instance uniform bool manual = false;
 
@@ -119,7 +119,7 @@ void fragment() {
 	float time_step =  1.0 / float(sample_count);
 	
 	// must be done this way so that the error between snapshot genertor viewports would be reduced to a minimum
-	float jitter = interleaved_gradient_noise(SCREEN_UV / SCREEN_PIXEL_SIZE, int(TIME * 120.0));
+	float jitter = interleaved_gradient_noise(SCREEN_UV / SCREEN_PIXEL_SIZE, game_frame);
 	
 	float time = 0.0;
 	
@@ -135,30 +135,48 @@ void fragment() {
 	
 	bool visible = false;
 	
-	for (int i = -1; i < sample_count + 1; i++) {
-		float t = 1.0 - (float(i) + jitter) * time_step;
-		
-		float clamped_t = clamp(t, 0.0, 1.0);
-		
-		vec2 temp_uv = UV + scaled_offset * clamped_t;
-		
-		vec2 normalized_temp_uv = (temp_uv - atlas_uv_offset * TEXTURE_PIXEL_SIZE) / (total_scale * snapshot_resolution_scale);
-		
-		if (normalized_temp_uv.x < 0.0 || normalized_temp_uv.x > 1.0 || normalized_temp_uv.y < 0.0 || normalized_temp_uv.y > 1.0) {
-			continue;
+	if (offset != vec2(0)) {
+		for (int i = -1; i < sample_count + 1; i++) {
+			float t = 1.0 - (float(i) + jitter) * time_step;
+			
+			float clamped_t = clamp(t, 0.0, 1.0);
+			
+			vec2 temp_uv = UV + scaled_offset * clamped_t;
+			
+			vec2 normalized_temp_uv = (temp_uv - atlas_uv_offset * TEXTURE_PIXEL_SIZE) / (total_scale * snapshot_resolution_scale);
+			
+			if (normalized_temp_uv.x < 0.0 || normalized_temp_uv.x > 1.0 || normalized_temp_uv.y < 0.0 || normalized_temp_uv.y > 1.0) {
+				continue;
+			}
+			
+			vec4 texture_sample = texelFetch(TEXTURE, ivec2(temp_uv / TEXTURE_PIXEL_SIZE), 0);
+			
+			if (texture_sample.a > alpha) {
+				alpha = texture_sample.a;
+				time = t;
+				side_offset = dot(temp_uv - 0.5, offset_perpen) + 0.5;
+				visible = true;
+			}
 		}
 		
-		vec4 texture_sample = texelFetch(TEXTURE, ivec2(temp_uv / TEXTURE_PIXEL_SIZE), 0);
-		
-		if (texture_sample.a > alpha) {
-			alpha = texture_sample.a;
-			time = t;
-			side_offset = dot(temp_uv - 0.5, offset_perpen) + 0.5;
-			visible = true;
+		if (visible) {
+			float final_time = ((1.0 - time) * stretch_time + age) / lifespan;
+			
+			float influence = pow((1.0 - final_time * 0.75), 0.5);
+			
+			COLOR = vec4(
+				final_time * influence * 0.5,
+				side_offset * influence * 0.5,
+				alpha * influence * 0.5,
+				influence * ALPHA_DIV * 0.5
+			);
+		}
+		else {
+			COLOR = vec4(0);
 		}
 	}
-	
-	if (visible) {
+	else {
+		time = 0.0;
 		float final_time = ((1.0 - time) * stretch_time + age) / lifespan;
 		
 		float influence = pow((1.0 - final_time * 0.75), 0.5);
@@ -168,9 +186,6 @@ void fragment() {
 			side_offset * influence * 0.5,
 			alpha * influence * 0.5,
 			influence * ALPHA_DIV * 0.5
-		);
-	}
-	else {
-		COLOR = vec4(0);
+		) * step(0.0001, alpha);
 	}
 }
