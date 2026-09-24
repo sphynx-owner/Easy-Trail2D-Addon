@@ -442,7 +442,48 @@ func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	
-	_trail_process(delta)
+	if DisplayServer.get_name() == "headless":
+		return
+	
+	if !pivot_node:
+		return
+	
+	_particle_emitter.set_instance_shader_parameter("game_frame", Engine.get_frames_drawn())
+	
+	_leading_sprite.set_instance_shader_parameter("game_frame", Engine.get_frames_drawn())
+	
+	_current_position = _get_pivot_position()
+	
+	var _frame_movement: Vector2 = _current_position - _past_position
+	
+	var _frame_speed: float = _frame_movement.length()
+	
+	if movement_look_direction_sort:
+		var normalized_velocity: Vector2 = _frame_movement.normalized()
+		
+		var is_horizontal: bool = abs(normalized_velocity.x) > VERTICAL_SPEED_THRESHOLD
+		
+		var target_z_index: int = pivot_node.z_index
+		
+		if is_horizontal:
+			z_index = target_z_index + (1 if look_direction.y < 0 else -1)
+			
+		else:
+			z_index = target_z_index + (1 if normalized_velocity.y < 0 else -1)
+	
+	var speed: float = _frame_speed / delta
+	
+	_is_enabled = (speed > speed_threshold) if automatic else enabled
+	
+	if _is_enabled:
+		match spread_mode:
+			SpreadMode.TIME:
+				_time_spread_process(delta)
+			
+			SpreadMode.DISTANCE:
+				_distance_spread_process(_frame_movement)
+	
+	_past_position = _current_position
 
 #endregion
 
@@ -537,169 +578,86 @@ func _update_particles() -> void:
 	_leading_sprite.set_instance_shader_parameter("lifetime", trail_lifetime)
 
 
-func _trail_process(delta: float) -> void:
+func _get_pivot_position() -> Vector2:
 	if DisplayServer.get_name() == "headless":
-		return
+		return Vector2.ZERO
 	
-	if !pivot_node:
-		return
+	return _snapshot_generator.get_pivot_position()
+
+
+func _on_enabled() -> void:
+	_current_position = _get_pivot_position()
 	
-	if _first_process_since_spawn:
-		_past_position = _get_pivot_node_position()
-		
-		_stretch_past_position = _past_position
+	_past_position = _current_position
 	
-	var _frame_movement: Vector2 = _get_pivot_node_position() - _past_position
+	_current_time = Time.get_ticks_msec() / 1000.0
 	
-	var _frame_speed: Vector2 = _frame_movement.length()
+	_last_emit_position = _current_position
 	
-	if movement_look_direction_sort:
-		var normalized_velocity: Vector2 = _frame_movement.normalized()
-		
-		var is_horizontal: bool = abs(normalized_velocity.x) > VERTICAL_SPEED_THRESHOLD
-		
-		var target_z_index: int = pivot_node.z_index
-		
-		if is_horizontal:
-			z_index = target_z_index + (1 if look_direction.y < 0 else -1)
-			
-		else:
-			z_index = target_z_index + (1 if normalized_velocity.y < 0 else -1)
+	_last_emit_time = _current_time
 	
-	var past_is_enabled: bool = _is_enabled
+	_time_buffer = 0.0
 	
-	_update_enabled(delta)
+	_distance_buffer = 0.0
+
+
+func _on_disabled() -> void:
+	if trail_type == TrailType.STRETCH:
+		_emit_stretchy_particle()
 	
-	if !past_is_enabled and _is_enabled and _just_started == false:
-		_just_started = true
-		
-	else:
-		_just_started = false
+	if trail_type == TrailType.GHOST:
+		_emit_particle(_get_pivot_position(), _snapshot_generator._current_frame)
 	
-	if _is_enabled:
+	_leading_sprite.visible = false
+
+
+func _time_spread_process(delta: float) -> void:
+	_time_buffer += delta
+	
+	if _time_buffer > time_spread:
 		match trail_type:
 			TrailType.GHOST:
-				match spread_mode:
-					SpreadMode.TIME:
-						_ghost_time_process(delta)
-					
-					SpreadMode.DISTANCE:
-						_ghost_distance_process()
+				if !single_snapshot:
+					_snapshot_generator.queue_snapshot()
+				
+				_emit_particle(_past_position, _snapshot_generator._current_frame)
+			
+			TrailType.STRETCH:
+				_emit_stretchy_particle()
+		
+		_time_buffer = fmod(_time_buffer, time_spread)
+
+
+func _distance_spread_process(delta: Vector2) -> void:
+	var speed: float = delta.length()
+	
+	_distance_buffer += speed
+	
+	if _distance_buffer > distance_spread:
+		match trail_type:
+			TrailType.GHOST:
+				if !single_snapshot:
+					_snapshot_generator.queue_snapshot()
+				
+				var starting_distance: float = distance_spread - (_distance_buffer - speed)
+				
+				var direction: Vector2 = delta.normalized()
+				
+				var emit_position: Vector2 = _past_position + direction * starting_distance
+				
+				for i in int(_distance_buffer / distance_spread):
+					_emit_particle(emit_position, _snapshot_generator._current_frame)
+					emit_position += direction * distance_spread
 			
 			TrailType.STRETCH:
 				if dynamic_trail_head:
 					_snapshot_generator.queue_snapshot(false)
 				
-				_leading_sprite.global_position = _get_pivot_node_position()
+				_emit_stretchy_particle()
 				
 				_update_leading_sprite()
-				
-				match spread_mode:
-					SpreadMode.TIME:
-						_stretch_time_process(delta)
-					
-					SpreadMode.DISTANCE:
-						_stretch_distance_process()
-	
-	if _set_invisible_timer:
-		_leading_sprite.set_instance_shader_parameter("time_spread", time_spread - _time_buffer)
-	
-	_past_position = _get_pivot_node_position()
-	
-	# Quick and dirty fix, needs to be at the end of the frame so that sub processes know
-	# to not run some logic (line 670)
-	if _first_process_since_spawn:
-		_first_process_since_spawn = false
-
-
-func _get_pivot_node_position() -> Vector2:
-	if DisplayServer.get_name() == "headless":
-		return Vector2.ZERO
-	
-	return _snapshot_generator.get_target_position()
-
-
-func _update_enabled(delta: float) -> void:
-	var speed: float = _frame_speed / delta
-	
-	_is_enabled = (speed > speed_threshold) if automatic else enabled
-
-
-func _on_enabled() -> void:
-	# So that it starts right away without waiting
-	_time_buffer = 0.0
-	
-	_distance_buffer = 0.0
-	
-	_stretch_past_position = _past_position
-	
-	if trail_type == TrailType.STRETCH:
-		_snapshot_generator.queue_snapshot()
 		
-		_leading_sprite.visible = true
-		
-	elif single_snapshot:
-		_snapshot_generator.queue_snapshot()
-
-
-func _on_disabled() -> void:
-	if emit_particle_on_disabled:
-		if trail_type == TrailType.STRETCH and !_just_started:
-			_emit_stretchy_particle(false)
-		
-		if trail_type == TrailType.GHOST:
-			_emit_particle(_get_pivot_node_position(), _snapshot_generator._current_frame)
-	
-	_leading_sprite.visible = false
-
-
-func _ghost_time_process(delta: float) -> void:
-	_time_buffer += delta
-	
-	if _time_buffer > time_spread:
-		if !single_snapshot:
-			_snapshot_generator.queue_snapshot()
-		
-		_emit_particle(_past_position, _snapshot_generator._current_frame)
-		
-		_time_buffer = 0
-
-
-func _ghost_distance_process() -> void:
-	_distance_buffer -= _frame_speed
-	
-	if _distance_buffer < 0.0:
-		if !single_snapshot:
-			_snapshot_generator.queue_snapshot()
-		
-		var direction: Vector2 = _frame_movement.normalized()
-		
-		var new_position: Vector2 = _past_position
-		
-		while _distance_buffer < 0.0:
-			_emit_particle(new_position, _snapshot_generator._current_frame)
-			
-			_distance_buffer += distance_spread
-			
-			new_position += direction * distance_spread
-
-
-func _stretch_time_process(delta: float) -> void:
-	_time_buffer -= delta
-	
-	if _time_buffer < 0.0:
-		_emit_stretchy_particle()
-		
-		_time_buffer += time_spread * ceil(-_time_buffer / time_spread)
-
-
-func _stretch_distance_process() -> void:
-	_distance_buffer -= _frame_speed
-	
-	if _distance_buffer < 0.0:
-		_emit_stretchy_particle()
-		
-		_distance_buffer += distance_spread * ceil(-_distance_buffer / distance_spread)
+		_distance_buffer = fmod(_distance_buffer, distance_spread)
 
 
 func _emit_stretchy_particle() -> void:
@@ -723,16 +681,18 @@ func _emit_particle(p_position: Vector2, atlas_frame: float, stretch: Vector2 = 
 		Color(stretch.x, 0, stretch.y, trail_lifetime),
 		GPUParticles2D.EMIT_FLAG_POSITION | GPUParticles2D.EMIT_FLAG_CUSTOM | GPUParticles2D.EMIT_FLAG_COLOR
 	)
-	
 
 
 func _update_leading_sprite() -> void:
+	_leading_sprite.global_position = _get_pivot_position()
+	
+	_leading_sprite.visible = trail_type == TrailType.STRETCH
 	
 	_leading_sprite.set_instance_shader_parameter("manual", true)
 	_leading_sprite.set_instance_shader_parameter("manual_atlas_frame", _snapshot_generator._current_frame)
-	_leading_sprite.set_instance_shader_parameter("manual_offset", last_spawn_position - current_position)
-	_leading_sprite.set_instance_shader_parameter("manual_stretch_time", current_time - latest_particle_emit)
+	_leading_sprite.set_instance_shader_parameter("manual_offset", _last_emit_position - _current_position)
+	_leading_sprite.set_instance_shader_parameter("manual_stretch_time", _current_time - _last_emit_time)
 	_leading_sprite.set_instance_shader_parameter("manual_age", 0)
-	_leading_sprite.set_instance_shader_parameter("manual_lifespan", lifespan)
+	_leading_sprite.set_instance_shader_parameter("manual_lifespan", trail_lifetime)
 
 #endregion

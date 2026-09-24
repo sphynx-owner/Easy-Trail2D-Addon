@@ -2,13 +2,5 @@
 
 [ext_resource type="Shader" uid="uid://mr71todj1gll" path="res://addons/easy-trail-2d/shaders/trail_particle.gdshader" id="1_rxyo3"]
 
-[sub_resource type="Curve" id="Curve_rj586"]
-_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.05119443), 0.0, 0.0, 0, 0]
-point_count = 2
-
-[sub_resource type="CurveTexture" id="CurveTexture_d21ai"]
-curve = SubResource("Curve_rj586")
-
 [resource]
 shader = ExtResource("1_rxyo3")
-shader_parameter/alpha_curve = SubResource("CurveTexture_d21ai")
