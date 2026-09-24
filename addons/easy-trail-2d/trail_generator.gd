@@ -6,13 +6,13 @@ extends CanvasGroup
 
 # TODO: consider making some of those overridable
 const DEFAULT_CANVAS_GROUP_MATERIAL: Material = \
-preload("res://addons/easy-trail-2d/materials/default_canvas_group_material.tres")
+preload("res://addons/easy-trail-2d/materials/trail_canvas_group_material.tres")
 
 const DEFAULT_TRAIL_PROCESS_MATERIAL: Material = \
-preload("res://addons/easy-trail-2d/materials/default_trail_shader_material.tres")
+preload("res://addons/easy-trail-2d/materials/trail_emitter_material.tres")
 
 const DEFAULT_TRAIL_PARTICLE_MATERIAL: Material = \
-preload("res://addons/easy-trail-2d/materials/default_trail_particle_material.tres")
+preload("res://addons/easy-trail-2d/materials/trail_particle_material.tres")
 
 # The threshold, in degrees above the horizontal line, 
 # which classify the normalized movement direction as non-horizontal.
@@ -389,7 +389,7 @@ func _get_property_list() -> Array[Dictionary]:
 
 func _ready() -> void:
 	if !material:
-		material = DEFAULT_CANVAS_GROUP_MATERIAL
+		material = DEFAULT_CANVAS_GROUP_MATERIAL.duplicate()
 	
 	if Engine.is_editor_hint():
 		return
@@ -520,11 +520,15 @@ func _update_particle_emitter() -> void:
 		trail_type == TrailType.STRETCH and spread_mode == SpreadMode.TIME
 	)
 	
+	material.set_shader_parameter("alpha_curve", alpha_curve)
+	
 	_particle_emitter.lifetime = trail_lifetime
 	
 	# The particles all share the same texture. While somewhat more complicated, it is also more 
 	# efficient to write snapshots into a static atlas.
 	_particle_emitter.set_instance_shader_parameter("snapshot_resolution_scale", snapshot_resolution_scale)
+	
+	_particle_emitter.set_instance_shader_parameter("sample_count", 20)
 	
 	_particle_emitter.set_instance_shader_parameter("particles_anim_h_frames", _snapshot_generator.atlas_dimensions.x)
 	
@@ -542,6 +546,8 @@ func _update_particle_emitter() -> void:
 	_particle_emitter.set_instance_shader_parameter("lifetime", trail_lifetime)
 	
 	_leading_sprite.set_instance_shader_parameter("snapshot_resolution_scale", snapshot_resolution_scale)
+	
+	_leading_sprite.set_instance_shader_parameter("sample_count", 20)
 	
 	_leading_sprite.set_instance_shader_parameter("particles_anim_h_frames", _snapshot_generator.atlas_dimensions.x)
 	
@@ -760,9 +766,9 @@ func _emit_particle(in_position: Vector2, current_frame: float, stretch: Vector2
 	_particle_emitter.emit_particle(
 		Transform2D(0, in_position),
 		Vector2(0, 0),
-		Color.WHITE,
+		Color(1.0, 1.0, 1.0, 1.0),
 		Color(stretch.x, 0, current_frame, stretch.y),
-		GPUParticles2D.EMIT_FLAG_POSITION | GPUParticles2D.EMIT_FLAG_CUSTOM
+		GPUParticles2D.EMIT_FLAG_POSITION | GPUParticles2D.EMIT_FLAG_CUSTOM | GPUParticles2D.EMIT_FLAG_COLOR
 	)
 
 

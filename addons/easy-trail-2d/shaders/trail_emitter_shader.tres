@@ -1,0 +1,14 @@
+[gd_resource type="Shader" format=3 uid="uid://ui8vs1muh7qq"]
+
+[resource]
+code = "shader_type particles;
+render_mode disable_velocity, disable_force;
+
+void process() {
+	CUSTOM.y += DELTA;
+	
+	if (CUSTOM.y > CUSTOM.w) {
+		ACTIVE = false;
+	}
+}
+"

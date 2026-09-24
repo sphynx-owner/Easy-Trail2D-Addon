@@ -1,0 +1,6 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://bqbldsshq5384"]
+
+[ext_resource type="Shader" uid="uid://ui8vs1muh7qq" path="res://addons/easy-trail-2d/shaders/trail_emitter_shader.tres" id="1_foh6u"]
+
+[resource]
+shader = ExtResource("1_foh6u")
