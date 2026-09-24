@@ -19,17 +19,15 @@ instance uniform int game_frame;
 
 instance uniform bool manual = false;
 
-instance uniform vec2 manual_offset;
-
-instance uniform int manual_current_frame = 0;
-
-instance uniform float manual_age = 0.0;
+instance uniform int manual_atlas_frame = 0;
 
 instance uniform float manual_lifespan = 0.0;
 
-instance uniform float manual_stretch_time = 0.0;
+instance uniform float manual_age = 0.0;
 
-instance uniform float particle_time_spread = 1.0;
+instance uniform vec2 manual_offset;
+
+instance uniform float manual_stretch_time = 0.0;
 
 // from https://www.iryoku.com/next-generation-post-processing-in-call-of-duty-advanced-warfare/
 // and https://blog.demofox.org/2022/01/01/interleaved-gradient-noise-a-different-kind-of-low-discrepancy-sequence/
@@ -74,14 +72,14 @@ void vertex() {
 	// The final size of the output texture in world pixels
 	vec2 texture_final_size = source_texture_size * total_scale;
 	
-	float particle_total_frames = float(atlas_h_frames * atlas_v_frames);
+	float atlas_frame_count = float(atlas_h_frames * atlas_v_frames);
 	
-	float particle_frame = floor(manual ? float(manual_current_frame) : COLOR.g);
+	float atlas_frame = floor(manual ? float(manual_atlas_frame) : COLOR.g);
 	
-	particle_frame = clamp(particle_frame, 0.0, particle_total_frames - 1.0);
+	atlas_frame = clamp(atlas_frame, 0.0, atlas_frame_count - 1.0);
 	
 	// We get the uv offset for the current frame in the atlas in pixels
-	atlas_uv_offset = vec2(mod(particle_frame, h_frames) / h_frames, floor((particle_frame + 0.5) / h_frames) / v_frames) * source_texture_size;
+	atlas_uv_offset = vec2(mod(atlas_frame, h_frames) / h_frames, floor((atlas_frame + 0.5) / h_frames) / v_frames) * source_texture_size;
 	
 	// This scales the UV so that it is a consistent global size, in this case the scale of a single global pixel
 	vec2 uv_scale = texture_final_size * snapshot_resolution_scale + abs(offset * snapshot_resolution_scale);

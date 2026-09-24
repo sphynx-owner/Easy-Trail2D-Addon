@@ -10,7 +10,7 @@ uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_n
 
 uniform sampler2D trail_texture: repeat_disable;
 
-uniform sampler2D alpha_curve: repeat_disable;
+uniform sampler2D alpha_texture: repeat_disable;
 
 void fragment() {
 	vec4 c = textureLod(screen_texture, SCREEN_UV, 0.0);
@@ -29,5 +29,5 @@ void fragment() {
 	
 	COLOR = max(vec4(0), vec4(color.rgb, color.a * alpha * step(time, 1.0)));
 	
-	COLOR.a *= texture(alpha_curve, vec2(trail_uv.x, 0.5)).r;
+	COLOR.a *= texture(alpha_texture, trail_uv).r;
 }

@@ -24,6 +24,12 @@ enum TrailType {STRETCH, GHOST}
 enum SpreadMode {DISTANCE, TIME}
 
 static var DYNAMIC_PROPERTIES: Array = [
+	{
+		"name": "spread_mode",
+		"type": TYPE_INT,
+		"hint": PROPERTY_HINT_ENUM,
+		"hint_string": "Distance, Time",
+	},
 	(func(trail_generator: TrailGenerator) -> Array:
 		if trail_generator.trail_type == TrailType.STRETCH:
 			return [
@@ -33,26 +39,10 @@ static var DYNAMIC_PROPERTIES: Array = [
 					"hint": PROPERTY_HINT_NONE,
 					"hint_string": "",
 				},
-				(func(trail_generator: TrailGenerator) -> Array:
-					if trail_generator.spread_mode == SpreadMode.TIME:
-						return [
-							{
-								"name": "alpha_curve",
-								"type": TYPE_OBJECT,
-								"hint": PROPERTY_HINT_RESOURCE_TYPE,
-								"hint_string": "CurveTexture",
-							}
-						]
-					return []),
 			]
-		return [
-			{
-				"name": "alpha_curve",
-				"type": TYPE_OBJECT,
-				"hint": PROPERTY_HINT_RESOURCE_TYPE,
-				"hint_string": "CurveTexture",
-			}
-		]),
+			
+		else:
+			return []),
 	(func(trail_generator: TrailGenerator) -> Array:
 		if trail_generator.automatic:
 			return [
@@ -63,31 +53,16 @@ static var DYNAMIC_PROPERTIES: Array = [
 					"hint_string": "",
 				}
 			]
-		return [
-			{
-				"name": "enabled",
-				"type": TYPE_BOOL,
-				"hint": PROPERTY_HINT_NONE,
-				"hint_string": "",
-			}
-		]),
-	{
-		"name": "spread_mode",
-		"type": TYPE_INT,
-		"hint": PROPERTY_HINT_ENUM,
-		"hint_string": "Distance, Time",
-	},
-	(func(trail_generator: TrailGenerator) -> Array:
-		if trail_generator.spread_mode == SpreadMode.TIME:
+			
+		else:
 			return [
 				{
-					"name": "time_spread",
-					"type": TYPE_FLOAT,
-					"hint": PROPERTY_HINT_RANGE,
-					"hint_string": "0.01, 1, or_greater",
+					"name": "enabled",
+					"type": TYPE_BOOL,
+					"hint": PROPERTY_HINT_NONE,
+					"hint_string": "",
 				}
-			]
-		return []),
+			]),
 	(func(trail_generator: TrailGenerator) -> Array:
 		if trail_generator.spread_mode == SpreadMode.DISTANCE:
 			return [
@@ -104,7 +79,19 @@ static var DYNAMIC_PROPERTIES: Array = [
 					"hint_string": "1, 100",
 				},
 			]
-		return []),
+			
+		elif trail_generator.spread_mode == SpreadMode.TIME:
+			return [
+				{
+					"name": "time_spread",
+					"type": TYPE_FLOAT,
+					"hint": PROPERTY_HINT_RANGE,
+					"hint_string": "0.01, 1, or_greater",
+				}
+			]
+			
+		else:
+			return []),
 ]
 
 # TODO: Replace this with a custom property wrapper to a quick search 
@@ -154,7 +141,7 @@ static var DYNAMIC_PROPERTIES: Array = [
 		snapshot_resolution_scale = value
 		
 		_update_snapshot_generator()
-		_update_particle_emitter()
+		_update_particles()
 
 ## An optimization where the trail will snapshot the targets
 ## once at its start, and use the same frame for the rest
@@ -174,7 +161,7 @@ static var DYNAMIC_PROPERTIES: Array = [
 		
 		notify_property_list_changed()
 		
-		_update_particle_emitter()
+		_update_particles()
 
 ## The lifetime of the generated trail particles
 @export var trail_lifetime: float = 1.0:
@@ -184,7 +171,7 @@ static var DYNAMIC_PROPERTIES: Array = [
 		
 		trail_lifetime = value
 		
-		_update_particle_emitter()
+		_update_particles()
 
 ## Setting this to `true` would let the trail generator enable
 ## itself automatically based on *speed_threshold*
@@ -197,22 +184,26 @@ static var DYNAMIC_PROPERTIES: Array = [
 		
 		notify_property_list_changed()
 
-## Whether to emit a last trail particle even if not qualified 
-## for emission when the generation is disabled (distance based 
-## dashes looks fuller at the end point)
-@export var emit_particle_on_disabled: bool = true
+@export var trail_texture: Texture2D:
+	set(value):
+		if trail_texture == value:
+			return
+		
+		trail_texture = value
+		
+		_update_canvas_group()
 
 ## The alpha curve of the particle, controlling it's opacity along 
 ## it's entire lifetime. 
 ## NOTE: Does not work with stretchy particles with sperad mode Distance.
-@export_storage var alpha_curve: CurveTexture = CurveTexture.new():
+@export var alpha_texture: Texture2D:
 	set(value):
-		if alpha_curve == value:
+		if alpha_texture == value:
 			return
 		
-		alpha_curve = value
+		alpha_texture = value
 		
-		_update_particle_emitter()
+		_update_canvas_group()
 
 ## This would make it so that the _leading_sprite, which dynamically stretches
 ## with the subject also gets visually updated. It is mainly relevant for 
@@ -262,8 +253,6 @@ static var DYNAMIC_PROPERTIES: Array = [
 		notify_property_list_changed()
 		
 		_update_reserved_frames()
-		
-		_update_particle_emitter()
 
 ## How far (in global units) does the element have to travel to generate 
 ## a trail particle, teleportation over large distances is supported to spread
@@ -299,7 +288,7 @@ static var DYNAMIC_PROPERTIES: Array = [
 		
 		_update_reserved_frames()
 		
-		_update_particle_emitter()
+		_update_particles()
 
 ## Use this in conjunction with [member movement_look_direction_sort] to 
 ## determine the sorting of the trail relatively to the target when moving
@@ -320,7 +309,7 @@ var _is_enabled: bool = false:
 		else:
 			_on_disabled()
 
-## The minimum amount of frames that th esnapshot generator needs to 
+## The minimum amount of frames that the snapshot generator needs to 
 ## save into an atlas
 var _reserved_frames: int = 1:
 	set(value):
@@ -331,7 +320,7 @@ var _reserved_frames: int = 1:
 		
 		_update_snapshot_generator()
 		
-		_update_particle_emitter()
+		_update_particles()
 
 ## The snapshot generator wrapped by this trail generator.
 ## It is in charge of managing snapshot atlases of the targets
@@ -346,32 +335,20 @@ var _particle_emitter: GPUParticles2D
 ## for seamless generation of stretched trails
 var _leading_sprite: Sprite2D
 
-## This will let the _second_leading_sprite make itself invisible
-## after the trail duration of a similarly spawned particle.
-var _set_invisible_timer: SceneTreeTimer
+var _current_position: Vector2
 
 ## Used when generating particles and detecting target movement
 var _past_position: Vector2
 
-## The displacement of the target during this frame
-var _frame_movement: Vector2 = Vector2.ZERO
+var _last_emit_position: Vector2
 
-## The dispalcement length of the target during this frame
-var _frame_speed: float = 0.0
+var _current_time: float = 0.0
 
-## Buffers for detecting when to generate trail particles
 var _time_buffer: float = 0.0
 
+var _last_emit_time: float = 0.0
+
 var _distance_buffer: float = 0.0
-
-## Used for generating connected trails
-var _stretch_past_position: Vector2
-
-## Will let us detect single teleportation and behave differently based on that
-var _just_started: bool = false
-
-## Uesd when the trail generator spawns and only later gets its target.
-var _first_process_since_spawn: bool = true
 
 
 #region Virtual Methods
@@ -390,6 +367,8 @@ func _get_property_list() -> Array[Dictionary]:
 func _ready() -> void:
 	if !material:
 		material = DEFAULT_CANVAS_GROUP_MATERIAL.duplicate()
+	
+	_update_canvas_group()
 	
 	if Engine.is_editor_hint():
 		return
@@ -412,17 +391,25 @@ func _ready() -> void:
 	# which it adds itself off its _ready(), by then.
 	_update_snapshot_generator()
 	
+	var particle_material
+	
 	add_child(_snapshot_generator)
 	
 	_particle_emitter = GPUParticles2D.new()
 	
 	_particle_emitter.emitting = false
 	
+	# TODO @sphynx-owner: be more intentional
 	_particle_emitter.amount = 1000
+	
+	# TODO @sphynx-owner: be more intentional
+	_particle_emitter.fixed_fps = 120
+	
+	_particle_emitter.interpolate = false
 	
 	_particle_emitter.process_material = DEFAULT_TRAIL_PROCESS_MATERIAL
 	
-	_particle_emitter.material = DEFAULT_TRAIL_PARTICLE_MATERIAL.duplicate()
+	_particle_emitter.material = DEFAULT_TRAIL_PARTICLE_MATERIAL
 	
 	_particle_emitter.texture = _snapshot_generator.atlas_texture_2d
 	
@@ -434,23 +421,21 @@ func _ready() -> void:
 	
 	_particle_emitter.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	
-	_particle_emitter.interpolate = false
-	
 	add_child(_particle_emitter)
 	
 	_leading_sprite = Sprite2D.new()
 	
 	_leading_sprite.texture = _snapshot_generator.atlas_texture_2d
 	
-	_leading_sprite.material = DEFAULT_TRAIL_PARTICLE_MATERIAL.duplicate()
+	_leading_sprite.material = DEFAULT_TRAIL_PARTICLE_MATERIAL
 	
-	_leading_sprite.set_instance_shader_parameter("use_override_offset", true)
+	_leading_sprite.set_instance_shader_parameter("manual", true)
 	
 	_leading_sprite.visible = false
 	
 	add_child(_leading_sprite)
 	
-	_update_particle_emitter()
+	_update_particles()
 
 
 func _process(delta: float) -> void:
@@ -511,18 +496,19 @@ func _update_snapshot_generator() -> void:
 	_snapshot_generator.atlas_dimensions = Vector2i(dimension, dimension)
 
 
-func _update_particle_emitter() -> void:
+func _update_canvas_group() -> void:
+	if !material:
+		return
+	
+	material.set_shader_parameter("trail_texture", trail_texture)
+	material.set_shader_parameter("alpha_texture", alpha_texture)
+
+
+func _update_particles() -> void:
 	if !_particle_emitter:
 		return
 	
-	set_instance_shader_parameter(
-		"use_canvas_group_alpha_curve",
-		trail_type == TrailType.STRETCH and spread_mode == SpreadMode.TIME
-	)
-	
-	material.set_shader_parameter("alpha_curve", alpha_curve)
-	
-	_particle_emitter.lifetime = trail_lifetime
+	_particle_emitter.lifetime = 1.0
 	
 	# The particles all share the same texture. While somewhat more complicated, it is also more 
 	# efficient to write snapshots into a static atlas.
@@ -533,13 +519,6 @@ func _update_particle_emitter() -> void:
 	_particle_emitter.set_instance_shader_parameter("particles_anim_h_frames", _snapshot_generator.atlas_dimensions.x)
 	
 	_particle_emitter.set_instance_shader_parameter("particles_anim_v_frames", _snapshot_generator.atlas_dimensions.y)
-	
-	_particle_emitter.material.set_shader_parameter("alpha_curve", alpha_curve)
-	
-	_particle_emitter.set_instance_shader_parameter(
-		"use_canvas_group_alpha_curve",
-		trail_type == TrailType.STRETCH and spread_mode == SpreadMode.TIME
-	)
 	
 	_particle_emitter.set_instance_shader_parameter("time_spread", time_spread)
 	
@@ -552,13 +531,6 @@ func _update_particle_emitter() -> void:
 	_leading_sprite.set_instance_shader_parameter("particles_anim_h_frames", _snapshot_generator.atlas_dimensions.x)
 	
 	_leading_sprite.set_instance_shader_parameter("particles_anim_v_frames", _snapshot_generator.atlas_dimensions.y)
-	
-	_leading_sprite.material.set_shader_parameter("alpha_curve", alpha_curve)
-	
-	_leading_sprite.set_instance_shader_parameter(
-		"use_canvas_group_alpha_curve",
-		trail_type == TrailType.STRETCH and spread_mode == SpreadMode.TIME
-	)
 	
 	_leading_sprite.set_instance_shader_parameter("time_spread", time_spread)
 	
@@ -577,9 +549,9 @@ func _trail_process(delta: float) -> void:
 		
 		_stretch_past_position = _past_position
 	
-	_frame_movement = _get_pivot_node_position() - _past_position
+	var _frame_movement: Vector2 = _get_pivot_node_position() - _past_position
 	
-	_frame_speed = _frame_movement.length()
+	var _frame_speed: Vector2 = _frame_movement.length()
 	
 	if movement_look_direction_sort:
 		var normalized_velocity: Vector2 = _frame_movement.normalized()
@@ -620,7 +592,7 @@ func _trail_process(delta: float) -> void:
 				
 				_leading_sprite.global_position = _get_pivot_node_position()
 				
-				_sync_leading_sprite_visual()
+				_update_leading_sprite()
 				
 				match spread_mode:
 					SpreadMode.TIME:
@@ -682,15 +654,15 @@ func _on_disabled() -> void:
 
 
 func _ghost_time_process(delta: float) -> void:
-	_time_buffer -= delta
+	_time_buffer += delta
 	
-	if _time_buffer < 0.0:
+	if _time_buffer > time_spread:
 		if !single_snapshot:
 			_snapshot_generator.queue_snapshot()
 		
 		_emit_particle(_past_position, _snapshot_generator._current_frame)
 		
-		_time_buffer += time_spread * ceil(-_time_buffer / time_spread)
+		_time_buffer = 0
 
 
 func _ghost_distance_process() -> void:
@@ -713,10 +685,6 @@ func _ghost_distance_process() -> void:
 
 
 func _stretch_time_process(delta: float) -> void:
-	# Dirty fix of artifact that is caused when the trail spawns
-	if _first_process_since_spawn:
-		return
-	
 	_time_buffer -= delta
 	
 	if _time_buffer < 0.0:
@@ -734,47 +702,37 @@ func _stretch_distance_process() -> void:
 		_distance_buffer += distance_spread * ceil(-_distance_buffer / distance_spread)
 
 
-func _emit_stretchy_particle(emit_particle: bool = true) -> void:
-	var offset: Vector2 = _stretch_past_position - _get_pivot_node_position()
+func _emit_stretchy_particle() -> void:
+	var stretch: Vector2 = _last_emit_position - _current_position
 	
-	if emit_particle:
-		_emit_particle(_get_pivot_node_position(), _snapshot_generator._current_frame + 1, offset)
+	var particle_stretch_time: float = _current_time - _last_emit_time
 	
-	_clear_invisible_timer()
+	_emit_particle(_current_position, _snapshot_generator._current_frame, stretch, particle_stretch_time)
 	
-	_create_invisible_timer()
+	_last_emit_position = _current_position
 	
-	_stretch_past_position = _get_pivot_node_position()
-	
-	if !single_snapshot:
-		_snapshot_generator.queue_snapshot()
+	_last_emit_time = _current_time
 
 
-func _create_invisible_timer() -> void:
-	_set_invisible_timer = get_tree().create_timer(trail_lifetime)
-
-
-func _clear_invisible_timer() -> void:
-	if _set_invisible_timer:
-		for connection in _set_invisible_timer.timeout.get_connections():
-			_set_invisible_timer.timeout.disconnect(connection.callable)
-		
-		_set_invisible_timer = null
-
-
-func _emit_particle(in_position: Vector2, current_frame: float, stretch: Vector2 = Vector2.ZERO) -> void:
+func _emit_particle(p_position: Vector2, atlas_frame: float, stretch: Vector2 = Vector2.ZERO, stretch_time: float = 0.0) -> void:
 	_particle_emitter.emit_particle(
-		Transform2D(0, in_position),
-		Vector2(0, 0),
-		Color(1.0, 1.0, 1.0, 1.0),
-		Color(stretch.x, 0, current_frame, stretch.y),
+		Transform2D(0, p_position),
+		Vector2(),
+		Color(stretch_time, atlas_frame, 0, 1.0),
+		# HACK @sphynx-owner: we reserve the green channel for the age of the particle, 
+		Color(stretch.x, 0, stretch.y, trail_lifetime),
 		GPUParticles2D.EMIT_FLAG_POSITION | GPUParticles2D.EMIT_FLAG_CUSTOM | GPUParticles2D.EMIT_FLAG_COLOR
 	)
-
-
-func _sync_leading_sprite_visual() -> void:
-	_leading_sprite.set_instance_shader_parameter("override_offset", (_stretch_past_position - _get_pivot_node_position()))
 	
-	_leading_sprite.set_instance_shader_parameter("override_current_frame", _snapshot_generator._current_frame)
+
+
+func _update_leading_sprite() -> void:
+	
+	_leading_sprite.set_instance_shader_parameter("manual", true)
+	_leading_sprite.set_instance_shader_parameter("manual_atlas_frame", _snapshot_generator._current_frame)
+	_leading_sprite.set_instance_shader_parameter("manual_offset", last_spawn_position - current_position)
+	_leading_sprite.set_instance_shader_parameter("manual_stretch_time", current_time - latest_particle_emit)
+	_leading_sprite.set_instance_shader_parameter("manual_age", 0)
+	_leading_sprite.set_instance_shader_parameter("manual_lifespan", lifespan)
 
 #endregion
