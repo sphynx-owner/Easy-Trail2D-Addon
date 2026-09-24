@@ -1,8 +1,12 @@
 shader_type canvas_item;
 
-render_mode blend_add;
+render_mode blend_premul_alpha;
 
 #define BLEND_DIV 0.25
+
+#define ALPHA_DIV 0.5
+
+
 
 // The resolution scale of the image, used to maintain the particle's global size
 instance uniform float snapshot_resolution_scale = 1.0;
@@ -123,6 +127,14 @@ void fragment() {
 	
 	float alpha = 0.0;
 	
+	vec2 initial_uv = UV + scaled_offset;
+	
+	if (initial_uv.x > 0.0 && initial_uv.x < 1.0 && initial_uv.y > 0.0 && initial_uv.y < 1.0) {
+		alpha = texelFetch(TEXTURE, ivec2(initial_uv / TEXTURE_PIXEL_SIZE), 0).a;
+	}
+	
+	bool visible = false;
+	
 	for (int i = -1; i < sample_count + 1; i++) {
 		float t = 1.0 - (float(i) + jitter) * time_step;
 		
@@ -142,17 +154,23 @@ void fragment() {
 			alpha = texture_sample.a;
 			time = t;
 			side_offset = dot(temp_uv - 0.5, offset_perpen) + 0.5;
+			visible = true;
 		}
 	}
 	
-	float final_time = ((1.0 - time) * stretch_time + age) / lifespan;
-	
-	final_time = mix(0, final_time, step(0.0, final_time));
-	
-	COLOR = vec4(
-		final_time * BLEND_DIV,
-		side_offset * BLEND_DIV,
-		BLEND_DIV,
-		alpha * BLEND_DIV
-	);
+	if (visible) {
+		float final_time = ((1.0 - time) * stretch_time + age) / lifespan;
+		
+		float influence = pow((1.0 - final_time * 0.75), 0.5);
+		
+		COLOR = vec4(
+			final_time * influence * 0.5,
+			side_offset * influence * 0.5,
+			alpha * influence * 0.5,
+			influence * ALPHA_DIV * 0.5
+		);
+	}
+	else {
+		COLOR = vec4(0);
+	}
 }

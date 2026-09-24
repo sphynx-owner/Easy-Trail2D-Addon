@@ -1,8 +1,8 @@
 shader_type canvas_item;
 
-#define BLEND_DIV 0.25
-
 #define EPSILON 0.000001
+
+#define ALPHA_DIV 0.5
 
 render_mode unshaded;
 
@@ -15,17 +15,19 @@ uniform sampler2D alpha_curve: repeat_disable;
 void fragment() {
 	vec4 c = textureLod(screen_texture, SCREEN_UV, 0.0);
 	
-	float time = (c.r / BLEND_DIV) / max(EPSILON, c.b / BLEND_DIV);
+	float mul = 1.0 / max(EPSILON, c.a / ALPHA_DIV);
 	
-	float side_offset = (c.g / BLEND_DIV) / max(EPSILON, c.b / BLEND_DIV);
+	float time = c.r * mul;
 	
-	float alpha = (c.a / BLEND_DIV) / max(EPSILON, c.b / BLEND_DIV);
+	float side_offset = c.g * mul;
+	
+	float alpha = c.b * mul;
 	
 	vec2 trail_uv = vec2(time, side_offset);
 	
 	vec4 color = texture(trail_texture, trail_uv);
 	
-	COLOR = vec4(color.rgb, color.a * alpha * step(time, 1.0));
+	COLOR = max(vec4(0), vec4(color.rgb, color.a * alpha * step(time, 1.0)));
 	
 	COLOR.a *= texture(alpha_curve, vec2(trail_uv.x, 0.5)).r;
 }
