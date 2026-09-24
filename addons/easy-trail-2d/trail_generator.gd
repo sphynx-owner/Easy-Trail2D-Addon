@@ -399,6 +399,8 @@ func _ready() -> void:
 	
 	_particle_emitter.emitting = false
 	
+	_particle_emitter.lifetime = 1.0
+	
 	# TODO @sphynx-owner: be more intentional
 	_particle_emitter.amount = 1000
 	
@@ -429,6 +431,8 @@ func _ready() -> void:
 	
 	_leading_sprite.material = DEFAULT_TRAIL_PARTICLE_MATERIAL
 	
+	_leading_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	
 	_leading_sprite.set_instance_shader_parameter("manual", true)
 	
 	_leading_sprite.visible = false
@@ -454,6 +458,8 @@ func _process(delta: float) -> void:
 	
 	_current_position = _get_pivot_position()
 	
+	_current_time = _get_time()
+	
 	var _frame_movement: Vector2 = _current_position - _past_position
 	
 	var _frame_speed: float = _frame_movement.length()
@@ -476,6 +482,12 @@ func _process(delta: float) -> void:
 	_is_enabled = (speed > speed_threshold) if automatic else enabled
 	
 	if _is_enabled:
+		if trail_type == TrailType.STRETCH:
+			if dynamic_trail_head:
+				_snapshot_generator.queue_snapshot(false)
+			
+			_update_leading_sprite()
+		
 		match spread_mode:
 			SpreadMode.TIME:
 				_time_spread_process(delta)
@@ -549,33 +561,21 @@ func _update_particles() -> void:
 	if !_particle_emitter:
 		return
 	
-	_particle_emitter.lifetime = 1.0
+	_particle_emitter.set_instance_shader_parameter("atlas_h_frames", _snapshot_generator.atlas_dimensions.x)
 	
-	# The particles all share the same texture. While somewhat more complicated, it is also more 
-	# efficient to write snapshots into a static atlas.
+	_particle_emitter.set_instance_shader_parameter("atlas_v_frames", _snapshot_generator.atlas_dimensions.y)
+	
 	_particle_emitter.set_instance_shader_parameter("snapshot_resolution_scale", snapshot_resolution_scale)
 	
-	_particle_emitter.set_instance_shader_parameter("sample_count", 20)
+	_particle_emitter.set_instance_shader_parameter("sample_count", 5)
 	
-	_particle_emitter.set_instance_shader_parameter("particles_anim_h_frames", _snapshot_generator.atlas_dimensions.x)
+	_leading_sprite.set_instance_shader_parameter("atlas_h_frames", _snapshot_generator.atlas_dimensions.x)
 	
-	_particle_emitter.set_instance_shader_parameter("particles_anim_v_frames", _snapshot_generator.atlas_dimensions.y)
-	
-	_particle_emitter.set_instance_shader_parameter("time_spread", time_spread)
-	
-	_particle_emitter.set_instance_shader_parameter("lifetime", trail_lifetime)
+	_leading_sprite.set_instance_shader_parameter("atlas_v_frames", _snapshot_generator.atlas_dimensions.y)
 	
 	_leading_sprite.set_instance_shader_parameter("snapshot_resolution_scale", snapshot_resolution_scale)
 	
-	_leading_sprite.set_instance_shader_parameter("sample_count", 20)
-	
-	_leading_sprite.set_instance_shader_parameter("particles_anim_h_frames", _snapshot_generator.atlas_dimensions.x)
-	
-	_leading_sprite.set_instance_shader_parameter("particles_anim_v_frames", _snapshot_generator.atlas_dimensions.y)
-	
-	_leading_sprite.set_instance_shader_parameter("time_spread", time_spread)
-	
-	_leading_sprite.set_instance_shader_parameter("lifetime", trail_lifetime)
+	_leading_sprite.set_instance_shader_parameter("sample_count", 5)
 
 
 func _get_pivot_position() -> Vector2:
@@ -585,17 +585,11 @@ func _get_pivot_position() -> Vector2:
 	return _snapshot_generator.get_pivot_position()
 
 
+func _get_time() -> float:
+	return Time.get_ticks_msec() / 1000.0
+
+
 func _on_enabled() -> void:
-	_current_position = _get_pivot_position()
-	
-	_past_position = _current_position
-	
-	_current_time = Time.get_ticks_msec() / 1000.0
-	
-	_last_emit_position = _current_position
-	
-	_last_emit_time = _current_time
-	
 	_time_buffer = 0.0
 	
 	_distance_buffer = 0.0
@@ -650,12 +644,7 @@ func _distance_spread_process(delta: Vector2) -> void:
 					emit_position += direction * distance_spread
 			
 			TrailType.STRETCH:
-				if dynamic_trail_head:
-					_snapshot_generator.queue_snapshot(false)
-				
 				_emit_stretchy_particle()
-				
-				_update_leading_sprite()
 		
 		_distance_buffer = fmod(_distance_buffer, distance_spread)
 

@@ -27,7 +27,7 @@ void fragment() {
 	
 	vec4 color = texture(trail_texture, trail_uv);
 	
-	COLOR = max(vec4(0), vec4(color.rgb, color.a * alpha * step(time, 1.0)));
+	COLOR = max(vec4(0), vec4(color.rgb, color.a * alpha * step(time, 1.0)));//vec4(trail_uv, 0, step(time, 1.0));//
 	
 	COLOR.a *= texture(alpha_texture, trail_uv).r;
 }

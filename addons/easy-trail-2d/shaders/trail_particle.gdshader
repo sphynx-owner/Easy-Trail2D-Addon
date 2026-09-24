@@ -6,12 +6,12 @@ render_mode blend_premul_alpha;
 
 #define ALPHA_DIV 0.5
 
-// The resolution scale of the image, used to maintain the particle's global size
-instance uniform float snapshot_resolution_scale = 1.0;
-
 instance uniform int atlas_h_frames;
 
 instance uniform int atlas_v_frames;
+
+// The resolution scale of the image, used to maintain the particle's global size
+instance uniform float snapshot_resolution_scale = 1.0;
 
 instance uniform int sample_count = 5;
 
@@ -152,7 +152,7 @@ void fragment() {
 			if (texture_sample.a > alpha) {
 				alpha = texture_sample.a;
 				time = t;
-				side_offset = dot(temp_uv - 0.5, offset_perpen) + 0.5;
+				side_offset = (dot(normalized_temp_uv - 0.5, offset_perpen) * 2.0 + 0.5);
 				visible = true;
 			}
 		}
