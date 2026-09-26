@@ -15,19 +15,21 @@ uniform sampler2D alpha_texture: repeat_disable;
 void fragment() {
 	vec4 c = textureLod(screen_texture, SCREEN_UV, 0.0);
 	
-	float mul = 1.0 / max(EPSILON, c.a / ALPHA_DIV);
+	//COLOR = vec4(c.rgb / c.a, 1.0);//c / c.a;
 	
-	float time = c.r * mul;
+	c.rgb /= c.a;
 	
-	float side_offset = c.g * mul;
+	float time = c.r;
 	
-	float alpha = c.b * mul;
+	float side_offset = c.g;
+	
+	float alpha = c.b;
 	
 	vec2 trail_uv = vec2(time, side_offset);
 	
 	vec4 color = texture(trail_texture, trail_uv);
 	
-	COLOR = max(vec4(0), vec4(color.rgb, color.a * alpha * step(time, 1.0)));//vec4(trail_uv, 0, step(time, 1.0));//
+	COLOR = max(vec4(0), vec4(color.rgb, color.a * alpha * step(time, 1.0)));
 	
 	COLOR.a *= texture(alpha_texture, trail_uv).r;
 }

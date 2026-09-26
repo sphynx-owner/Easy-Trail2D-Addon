@@ -1,8 +1,8 @@
 shader_type canvas_item;
 
-render_mode blend_premul_alpha;
+render_mode blend_add;
 
-#define BLEND_DIV 0.25
+#define BLEND_DIV 0.5
 
 #define ALPHA_DIV 0.5
 
@@ -127,7 +127,7 @@ void fragment() {
 	
 	vec2 initial_uv = UV + scaled_offset;
 	
-	if (initial_uv.x > 0.0 && initial_uv.x < 1.0 && initial_uv.y > 0.0 && initial_uv.y < 1.0) {
+	if (offset == vec2(0) && initial_uv.x > 0.0 && initial_uv.x < 1.0 && initial_uv.y > 0.0 && initial_uv.y < 1.0) {
 		alpha = texelFetch(TEXTURE, ivec2(initial_uv / TEXTURE_PIXEL_SIZE), 0).a;
 	}
 	
@@ -160,13 +160,13 @@ void fragment() {
 		if (visible) {
 			float final_time = ((1.0 - time) * stretch_time + age) / lifespan;
 			
-			float influence = pow((1.0 - final_time * 0.75), 0.5);
+			float influence = 1.0 - final_time * 0.5;
 			
 			COLOR = vec4(
-				final_time * influence * 0.5,
-				side_offset * influence * 0.5,
-				alpha * influence * 0.5,
-				influence * ALPHA_DIV * 0.5
+				final_time * BLEND_DIV * influence,
+				side_offset * BLEND_DIV * influence,
+				alpha * BLEND_DIV * influence,
+				BLEND_DIV * influence
 			);
 		}
 		else {
@@ -174,16 +174,15 @@ void fragment() {
 		}
 	}
 	else {
-		time = 0.0;
-		float final_time = ((1.0 - time) * stretch_time + age) / lifespan;
+		float final_time = age / lifespan;
 		
-		float influence = pow((1.0 - final_time * 0.75), 0.5);
+		float influence = 1.0 - final_time * 0.5;
 		
 		COLOR = vec4(
-			final_time * influence * 0.5,
-			side_offset * influence * 0.5,
-			alpha * influence * 0.5,
-			influence * ALPHA_DIV * 0.5
-		) * step(0.0001, alpha);
+			final_time * BLEND_DIV * influence,
+			side_offset * BLEND_DIV * influence,
+			alpha * BLEND_DIV * influence,
+			BLEND_DIV * influence
+		) * step(0.000001, alpha);
 	}
 }

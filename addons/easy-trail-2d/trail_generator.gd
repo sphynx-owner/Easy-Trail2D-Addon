@@ -344,6 +344,8 @@ var _last_emit_position: Vector2
 
 var _current_time: float = 0.0
 
+var _past_time: float = 0.0
+
 var _time_buffer: float = 0.0
 
 var _last_emit_time: float = 0.0
@@ -440,6 +442,10 @@ func _ready() -> void:
 	add_child(_leading_sprite)
 	
 	_update_particles()
+	
+	_past_position = _current_position
+	
+	_past_time = _current_time
 
 
 func _process(delta: float) -> void:
@@ -494,8 +500,11 @@ func _process(delta: float) -> void:
 			
 			SpreadMode.DISTANCE:
 				_distance_spread_process(_frame_movement)
+		
 	
 	_past_position = _current_position
+	
+	_past_time = _current_time
 
 #endregion
 
@@ -590,17 +599,14 @@ func _get_time() -> float:
 
 
 func _on_enabled() -> void:
-	_time_buffer = 0.0
+	_time_buffer = time_spread
 	
-	_distance_buffer = 0.0
+	_distance_buffer = distance_spread
 
 
 func _on_disabled() -> void:
-	if trail_type == TrailType.STRETCH:
+	if _current_position != _past_position and trail_type == TrailType.STRETCH:
 		_emit_stretchy_particle()
-	
-	if trail_type == TrailType.GHOST:
-		_emit_particle(_get_pivot_position(), _snapshot_generator._current_frame)
 	
 	_leading_sprite.visible = false
 
@@ -609,11 +615,11 @@ func _time_spread_process(delta: float) -> void:
 	_time_buffer += delta
 	
 	if _time_buffer > time_spread:
+		if !single_snapshot:
+			_snapshot_generator.queue_snapshot()
+		
 		match trail_type:
 			TrailType.GHOST:
-				if !single_snapshot:
-					_snapshot_generator.queue_snapshot()
-				
 				_emit_particle(_past_position, _snapshot_generator._current_frame)
 			
 			TrailType.STRETCH:
@@ -628,11 +634,11 @@ func _distance_spread_process(delta: Vector2) -> void:
 	_distance_buffer += speed
 	
 	if _distance_buffer > distance_spread:
+		if !single_snapshot:
+			_snapshot_generator.queue_snapshot()
+		
 		match trail_type:
 			TrailType.GHOST:
-				if !single_snapshot:
-					_snapshot_generator.queue_snapshot()
-				
 				var starting_distance: float = distance_spread - (_distance_buffer - speed)
 				
 				var direction: Vector2 = delta.normalized()
