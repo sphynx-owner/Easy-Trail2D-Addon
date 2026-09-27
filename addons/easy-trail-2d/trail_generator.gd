@@ -362,6 +362,8 @@ func _init() -> void:
 	
 	texture_filter = TEXTURE_FILTER_NEAREST
 	
+	process_priority = 1
+	
 	_snapshot_generator = SnapshotGenerator.new()
 
 
@@ -373,36 +375,31 @@ func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	
-	add_child(_snapshot_generator)
-	
-	if !material:
-		material = DEFAULT_CANVAS_GROUP_MATERIAL.duplicate()
-	
 	if Engine.is_editor_hint():
 		var new_gizmo: SnapshotRectGizmo = SnapshotRectGizmo.new()
 		
 		new_gizmo.node = self
 		
+		new_gizmo.top_level = true
+		
 		add_child(new_gizmo)
 	
-	_update_canvas_group()
+	_snapshot_generator.process_priority = process_priority + 1
 	
-	# We want to generate the trail after the object has moved
-	process_priority = 1
-	
-	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	
-	_update_reserved_frames()
-	
-	_snapshot_generator = SnapshotGenerator.new()
-	
-	_snapshot_generator.process_priority = 2
+	add_child(_snapshot_generator)
 	
 	# We put this after add_child() so that it will have the _sub_viewport children,
 	# which it adds itself off its _ready(), by then.
 	_update_snapshot_generator()
 	
-	var particle_material
+	if !material:
+		material = DEFAULT_CANVAS_GROUP_MATERIAL.duplicate()
+	
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	
+	_update_canvas_group()
+	
+	_update_reserved_frames()
 	
 	_particle_emitter = GPUParticles2D.new()
 	
@@ -615,7 +612,7 @@ func _on_enabled() -> void:
 
 func _on_disabled() -> void:
 	if _last_emit_position != _past_position and trail_type == TrailType.STRETCH:
-		_emit_stretchy_particle()
+		_emit_stretchy_particle(_current_position, -1)
 	
 	_leading_sprite.visible = false
 
@@ -629,10 +626,10 @@ func _time_spread_process(delta: float) -> void:
 		
 		match trail_type:
 			TrailType.GHOST:
-				_emit_particle(_past_position, _snapshot_generator.get_current_frame())
+				_emit_particle(_past_position)
 			
 			TrailType.STRETCH:
-				_emit_stretchy_particle()
+				_emit_stretchy_particle(_current_position)
 		
 		_time_buffer = fmod(_time_buffer, time_spread)
 
@@ -646,41 +643,50 @@ func _distance_spread_process(delta: Vector2) -> void:
 		if !single_snapshot:
 			_snapshot_generator.queue_snapshot()
 		
-		match trail_type:
-			TrailType.GHOST:
-				var starting_distance: float = distance_spread - (_distance_buffer - speed)
+		var starting_distance: float = distance_spread - (_distance_buffer - speed)
+		
+		var direction: Vector2 = delta.normalized()
+		
+		var emit_position: Vector2 = _past_position + direction * starting_distance
+		
+		for i in int(_distance_buffer / distance_spread):
+			match trail_type:
+				TrailType.GHOST:
+					_emit_particle(emit_position)
 				
-				var direction: Vector2 = delta.normalized()
-				
-				var emit_position: Vector2 = _past_position + direction * starting_distance
-				
-				for i in int(_distance_buffer / distance_spread):
-					_emit_particle(emit_position, _snapshot_generator.get_current_frame())
-					emit_position += direction * distance_spread
+				TrailType.STRETCH:
+					_emit_stretchy_particle(emit_position)
 			
-			TrailType.STRETCH:
-				_emit_stretchy_particle()
+			emit_position += direction * distance_spread
 		
 		_distance_buffer = fmod(_distance_buffer, distance_spread)
+		
+		#if _distance_buffer > 0.0 and trail_type == TrailType.STRETCH:
+			#_emit_stretchy_particle(_current_position)
 
 
-func _emit_stretchy_particle() -> void:
-	var stretch: Vector2 = _last_emit_position - _current_position
+func _emit_stretchy_particle(p_position: Vector2, frame_offset: int = 0) -> void:
+	var stretch: Vector2 = _last_emit_position - p_position
 	
 	var particle_stretch_time: float = _current_time - _last_emit_time
 	
-	_emit_particle(_current_position, _snapshot_generator.get_current_frame(), stretch, particle_stretch_time)
+	_emit_particle(p_position, frame_offset, stretch, particle_stretch_time)
 	
-	_last_emit_position = _current_position
+	_last_emit_position = p_position
 	
 	_last_emit_time = _current_time
 
 
-func _emit_particle(p_position: Vector2, atlas_frame: float, stretch: Vector2 = Vector2.ZERO, stretch_time: float = 0.0) -> void:
+func _emit_particle(
+	p_position: Vector2,
+	frame_offset: int = 0,
+	stretch: Vector2 = Vector2.ZERO,
+	stretch_time: float = 0.0
+) -> void:
 	_particle_emitter.emit_particle(
-		Transform2D(0, p_position),
+		Transform2D(0, p_position + Vector2(snapshot_rect.get_center())),
 		Vector2(),
-		Color(stretch_time, atlas_frame, 0, 1.0),
+		Color(stretch_time, _snapshot_generator.get_current_frame(frame_offset), 0, 1.0),
 		# HACK @sphynx-owner: we reserve the green channel for the age of the particle, 
 		Color(stretch.x, 0, stretch.y, trail_lifetime),
 		GPUParticles2D.EMIT_FLAG_POSITION | GPUParticles2D.EMIT_FLAG_CUSTOM | GPUParticles2D.EMIT_FLAG_COLOR
@@ -688,7 +694,7 @@ func _emit_particle(p_position: Vector2, atlas_frame: float, stretch: Vector2 = 
 
 
 func _update_leading_sprite() -> void:
-	_leading_sprite.global_position = get_pivot_position()
+	_leading_sprite.global_position = get_pivot_position() + Vector2(snapshot_rect.get_center())
 	
 	_leading_sprite.visible = trail_type == TrailType.STRETCH
 	

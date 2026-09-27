@@ -187,7 +187,7 @@ void fragment() {
 			if (texture_sample.a > alpha) {
 				alpha = texture_sample.a;
 				time = t;
-				side_offset = (dot(normalized_temp_uv - 0.5, offset_perpen) * 2.0 + 0.5);
+				side_offset = (dot(normalized_temp_uv - 0.5, offset_perpen) + 0.5);
 				visible = 1.0;
 			}
 		}
