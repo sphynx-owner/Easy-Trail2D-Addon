@@ -94,12 +94,7 @@ static var DYNAMIC_PROPERTIES: Array = [
 			return []),
 ]
 
-# TODO: Replace this with a custom property wrapper to a quick search 
-# dictionary for efficient add and remove operations at runtime
-## The list of nodes that will be trailed. Note that 
-## they have to have a supporting shader materail that has the 
-## includes from the snapshot generator, refer to /example/shaders/trailable_sprite.gdshader
-## NOTE: Do not modify this array from code, instead use the access functions
+## The list of nodes that will be trailed.
 @export var targets: Array[Node2D]:
 	set(value):
 		if targets == value:
@@ -109,8 +104,8 @@ static var DYNAMIC_PROPERTIES: Array = [
 		
 		_update_snapshot_generator()
 
-## The motion root of the trail, is not necessarily trailed itself.
-## For when multiple nodes are targets under the same trail generator
+## The motion root of the trail, if not set will default to the
+## first target in [member targets]
 @export var pivot_node: Node2D:
 	set(value):
 		if pivot_node == value:
@@ -119,6 +114,12 @@ static var DYNAMIC_PROPERTIES: Array = [
 		pivot_node = value
 		
 		_update_snapshot_generator()
+	
+	get():
+		if _snapshot_generator:
+			return _snapshot_generator.pivot_node
+		
+		return pivot_node
 
 ## The global rect within which we capture the elements.
 ## Does not imply texture quality, just extends and offsets
@@ -356,10 +357,12 @@ var _distance_buffer: float = 0.0
 #region Virtual Methods
 
 func _init() -> void:
-	if Engine.is_editor_hint():
+	if DisplayServer.get_name() == "headless":
 		return
 	
 	texture_filter = TEXTURE_FILTER_NEAREST
+	
+	_snapshot_generator = SnapshotGenerator.new()
 
 
 func _get_property_list() -> Array[Dictionary]:
@@ -367,16 +370,22 @@ func _get_property_list() -> Array[Dictionary]:
 
 
 func _ready() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	
+	add_child(_snapshot_generator)
+	
 	if !material:
 		material = DEFAULT_CANVAS_GROUP_MATERIAL.duplicate()
 	
-	_update_canvas_group()
-	
 	if Engine.is_editor_hint():
-		return
-
-	if DisplayServer.get_name() == "headless":
-		return
+		var new_gizmo: SnapshotRectGizmo = SnapshotRectGizmo.new()
+		
+		new_gizmo.node = self
+		
+		add_child(new_gizmo)
+	
+	_update_canvas_group()
 	
 	# We want to generate the trail after the object has moved
 	process_priority = 1
@@ -394,8 +403,6 @@ func _ready() -> void:
 	_update_snapshot_generator()
 	
 	var particle_material
-	
-	add_child(_snapshot_generator)
 	
 	_particle_emitter = GPUParticles2D.new()
 	
@@ -449,9 +456,6 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if Engine.is_editor_hint():
-		return
-	
 	if DisplayServer.get_name() == "headless":
 		return
 	
@@ -462,7 +466,7 @@ func _process(delta: float) -> void:
 	
 	_leading_sprite.set_instance_shader_parameter("game_frame", Engine.get_frames_drawn())
 	
-	_current_position = _get_pivot_position()
+	_current_position = get_pivot_position()
 	
 	_current_time = _get_time()
 	
@@ -570,6 +574,8 @@ func _update_particles() -> void:
 	if !_particle_emitter:
 		return
 	
+	_particle_emitter.lifetime = trail_lifetime
+	
 	_particle_emitter.set_instance_shader_parameter("atlas_h_frames", _snapshot_generator.atlas_dimensions.x)
 	
 	_particle_emitter.set_instance_shader_parameter("atlas_v_frames", _snapshot_generator.atlas_dimensions.y)
@@ -587,7 +593,7 @@ func _update_particles() -> void:
 	_leading_sprite.set_instance_shader_parameter("sample_count", 5)
 
 
-func _get_pivot_position() -> Vector2:
+func get_pivot_position() -> Vector2:
 	if DisplayServer.get_name() == "headless":
 		return Vector2.ZERO
 	
@@ -599,13 +605,16 @@ func _get_time() -> float:
 
 
 func _on_enabled() -> void:
-	_time_buffer = time_spread
+	_last_emit_time = _past_time
+	_last_emit_position = _past_position
 	
-	_distance_buffer = distance_spread
+	_time_buffer = time_spread if trail_type == TrailType.GHOST else 0.0
+	
+	_distance_buffer = distance_spread if trail_type == TrailType.GHOST else 0.0
 
 
 func _on_disabled() -> void:
-	if _current_position != _past_position and trail_type == TrailType.STRETCH:
+	if _last_emit_position != _past_position and trail_type == TrailType.STRETCH:
 		_emit_stretchy_particle()
 	
 	_leading_sprite.visible = false
@@ -620,7 +629,7 @@ func _time_spread_process(delta: float) -> void:
 		
 		match trail_type:
 			TrailType.GHOST:
-				_emit_particle(_past_position, _snapshot_generator._current_frame)
+				_emit_particle(_past_position, _snapshot_generator.get_current_frame())
 			
 			TrailType.STRETCH:
 				_emit_stretchy_particle()
@@ -646,7 +655,7 @@ func _distance_spread_process(delta: Vector2) -> void:
 				var emit_position: Vector2 = _past_position + direction * starting_distance
 				
 				for i in int(_distance_buffer / distance_spread):
-					_emit_particle(emit_position, _snapshot_generator._current_frame)
+					_emit_particle(emit_position, _snapshot_generator.get_current_frame())
 					emit_position += direction * distance_spread
 			
 			TrailType.STRETCH:
@@ -660,7 +669,7 @@ func _emit_stretchy_particle() -> void:
 	
 	var particle_stretch_time: float = _current_time - _last_emit_time
 	
-	_emit_particle(_current_position, _snapshot_generator._current_frame, stretch, particle_stretch_time)
+	_emit_particle(_current_position, _snapshot_generator.get_current_frame(), stretch, particle_stretch_time)
 	
 	_last_emit_position = _current_position
 	
@@ -679,13 +688,13 @@ func _emit_particle(p_position: Vector2, atlas_frame: float, stretch: Vector2 = 
 
 
 func _update_leading_sprite() -> void:
-	_leading_sprite.global_position = _get_pivot_position()
+	_leading_sprite.global_position = get_pivot_position()
 	
 	_leading_sprite.visible = trail_type == TrailType.STRETCH
 	
 	_leading_sprite.set_instance_shader_parameter("manual", true)
-	_leading_sprite.set_instance_shader_parameter("manual_atlas_frame", _snapshot_generator._current_frame)
-	_leading_sprite.set_instance_shader_parameter("manual_offset", _last_emit_position - _current_position)
+	_leading_sprite.set_instance_shader_parameter("manual_atlas_frame", _snapshot_generator.get_current_frame())
+	_leading_sprite.set_instance_shader_parameter("manual_stretch_offset", _last_emit_position - _current_position)
 	_leading_sprite.set_instance_shader_parameter("manual_stretch_time", _current_time - _last_emit_time)
 	_leading_sprite.set_instance_shader_parameter("manual_age", 0)
 	_leading_sprite.set_instance_shader_parameter("manual_lifespan", trail_lifetime)

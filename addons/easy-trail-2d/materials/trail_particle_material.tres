@@ -4,3 +4,8 @@
 
 [resource]
 shader = ExtResource("1_rxyo3")
+shader_parameter/atlas_h_frames = 1
+shader_parameter/atlas_v_frames = 1
+shader_parameter/snapshot_resolution_scale = 1.0
+shader_parameter/sample_count = 5
+shader_parameter/game_frame = 0
