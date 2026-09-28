@@ -39,6 +39,12 @@ static var DYNAMIC_PROPERTIES: Array = [
 					"hint": PROPERTY_HINT_NONE,
 					"hint_string": "",
 				},
+				{
+					"name": "stretch_sample_count",
+					"type": TYPE_INT,
+					"hint": PROPERTY_HINT_NONE,
+					"hint_string": "",
+				},
 			]
 			
 		else:
@@ -216,6 +222,15 @@ static var DYNAMIC_PROPERTIES: Array = [
 			return
 		
 		dynamic_trail_head = value
+
+@export_storage var stretch_sample_count: int = 5:
+	set(value):
+		if stretch_sample_count == value:
+			return
+		
+		stretch_sample_count = value
+		
+		_update_particles()
 
 ## When enabled, you can manipulate [member look_direction],
 ## along side your movement of the character, and the result
@@ -590,7 +605,7 @@ func _update_particles() -> void:
 	
 	_particle_emitter.set_instance_shader_parameter("snapshot_resolution_scale", snapshot_resolution_scale)
 	
-	_particle_emitter.set_instance_shader_parameter("sample_count", 5)
+	_particle_emitter.set_instance_shader_parameter("sample_count", stretch_sample_count)
 	
 	_leading_sprite.set_instance_shader_parameter("atlas_h_frames", _snapshot_generator.atlas_dimensions.x)
 	
@@ -598,7 +613,7 @@ func _update_particles() -> void:
 	
 	_leading_sprite.set_instance_shader_parameter("snapshot_resolution_scale", snapshot_resolution_scale)
 	
-	_leading_sprite.set_instance_shader_parameter("sample_count", 5)
+	_leading_sprite.set_instance_shader_parameter("sample_count", stretch_sample_count)
 
 
 func get_pivot_position() -> Vector2:
