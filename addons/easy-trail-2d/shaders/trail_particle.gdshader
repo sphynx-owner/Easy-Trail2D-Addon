@@ -2,9 +2,9 @@ shader_type canvas_item;
 
 render_mode blend_add;
 
-#define BLEND_DIV 0.25
+#define BLEND_DIV 0.4
 
-#define TIME_INFLUENCE_MUL 0.0;
+#define TIME_INFLUENCE_MUL 0.4
 
 instance uniform int atlas_h_frames;
 
@@ -187,7 +187,7 @@ void fragment() {
 			if (texture_sample.a > alpha) {
 				alpha = texture_sample.a;
 				time = t;
-				side_offset = (dot(normalized_temp_uv - 0.5, offset_perpen) + 0.5);
+				side_offset = 1.0 - (dot(normalized_temp_uv - 0.5, offset_perpen) + 0.5);
 				visible = 1.0;
 			}
 		}

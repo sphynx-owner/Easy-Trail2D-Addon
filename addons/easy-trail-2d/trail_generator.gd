@@ -210,7 +210,7 @@ static var DYNAMIC_PROPERTIES: Array = [
 ## with the subject also gets visually updated. It is mainly relevant for 
 ## elements that significantly change while they move, and it will 
 ## require running the snapshot generation each frame, so use carefully
-@export_storage var dynamic_trail_head: bool = false:
+@export_storage var dynamic_trail_head: bool = true:
 	set(value):
 		if dynamic_trail_head == value:
 			return
@@ -291,6 +291,8 @@ static var DYNAMIC_PROPERTIES: Array = [
 		
 		_update_particles()
 
+@export_storage var max_refresh_rate: int = 15
+
 ## Use this in conjunction with [member movement_look_direction_sort] to 
 ## determine the sorting of the trail relatively to the target when moving
 ## horizontally.
@@ -352,6 +354,8 @@ var _time_buffer: float = 0.0
 var _last_emit_time: float = 0.0
 
 var _distance_buffer: float = 0.0
+
+var _first_process: bool = true
 
 
 #region Virtual Methods
@@ -446,10 +450,6 @@ func _ready() -> void:
 	add_child(_leading_sprite)
 	
 	_update_particles()
-	
-	_past_position = _current_position
-	
-	_past_time = _current_time
 
 
 func _process(delta: float) -> void:
@@ -458,6 +458,17 @@ func _process(delta: float) -> void:
 	
 	if !pivot_node:
 		return
+	
+	if _first_process:
+		_first_process = false
+		
+		_current_position = get_pivot_position()
+		
+		_current_time = _get_time()
+		
+		_past_position = _current_position
+		
+		_past_time = _current_time
 	
 	_particle_emitter.set_instance_shader_parameter("game_frame", Engine.get_frames_drawn())
 	
@@ -602,6 +613,12 @@ func _get_time() -> float:
 
 
 func _on_enabled() -> void:
+	if single_snapshot:
+		_snapshot_generator.queue_snapshot(false)
+		
+	else:
+		_snapshot_generator.queue_snapshot()
+	
 	_last_emit_time = _past_time
 	_last_emit_position = _past_position
 	
@@ -612,7 +629,7 @@ func _on_enabled() -> void:
 
 func _on_disabled() -> void:
 	if _last_emit_position != _past_position and trail_type == TrailType.STRETCH:
-		_emit_stretchy_particle(_current_position, -1)
+		_emit_stretchy_particle(_current_position)
 	
 	_leading_sprite.visible = false
 
@@ -629,7 +646,7 @@ func _time_spread_process(delta: float) -> void:
 				_emit_particle(_past_position)
 			
 			TrailType.STRETCH:
-				_emit_stretchy_particle(_current_position)
+				_emit_stretchy_particle(_current_position, -1 if !dynamic_trail_head else 0)
 		
 		_time_buffer = fmod(_time_buffer, time_spread)
 
@@ -655,14 +672,11 @@ func _distance_spread_process(delta: Vector2) -> void:
 					_emit_particle(emit_position)
 				
 				TrailType.STRETCH:
-					_emit_stretchy_particle(emit_position)
+					_emit_stretchy_particle(emit_position, -1 if !dynamic_trail_head else 0)
 			
 			emit_position += direction * distance_spread
 		
 		_distance_buffer = fmod(_distance_buffer, distance_spread)
-		
-		#if _distance_buffer > 0.0 and trail_type == TrailType.STRETCH:
-			#_emit_stretchy_particle(_current_position)
 
 
 func _emit_stretchy_particle(p_position: Vector2, frame_offset: int = 0) -> void:
@@ -696,10 +710,10 @@ func _emit_particle(
 func _update_leading_sprite() -> void:
 	_leading_sprite.global_position = get_pivot_position() + Vector2(snapshot_rect.get_center())
 	
-	_leading_sprite.visible = trail_type == TrailType.STRETCH
+	_leading_sprite.visible =  trail_type == TrailType.STRETCH
 	
 	_leading_sprite.set_instance_shader_parameter("manual", true)
-	_leading_sprite.set_instance_shader_parameter("manual_atlas_frame", _snapshot_generator.get_current_frame())
+	_leading_sprite.set_instance_shader_parameter("manual_atlas_frame", _snapshot_generator.get_current_frame(-1 if !dynamic_trail_head else 0))
 	_leading_sprite.set_instance_shader_parameter("manual_stretch_offset", _last_emit_position - _current_position)
 	_leading_sprite.set_instance_shader_parameter("manual_stretch_time", _current_time - _last_emit_time)
 	_leading_sprite.set_instance_shader_parameter("manual_age", 0)
