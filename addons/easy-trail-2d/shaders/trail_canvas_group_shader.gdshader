@@ -1,6 +1,6 @@
 shader_type canvas_item;
 
-#define DEBUG
+//#define DEBUG
 
 #define BLEND_DIV 0.25
 

@@ -109,7 +109,16 @@ enum SpreadMode {DISTANCE, TIME}
 
 ## A limit of how many snapshots can be taken over time. Can be used as an alternative
 ## to an othrewise larger [member snapshot_store_size]
-@export var snapshot_max_refresh_rate: int = 15
+@export var snapshot_max_refresh_rate: int = 15:
+	set(value):
+		if snapshot_max_refresh_rate == value:
+			return
+		
+		snapshot_max_refresh_rate = value
+		
+		_update_snapshot_generator()
+		
+		_update_particles()
 
 @export_group("trail settings", "trail_")
 
@@ -560,6 +569,8 @@ func _update_snapshot_generator() -> void:
 	if !_snapshot_generator:
 		return
 	
+	_snapshot_generator.max_refresh_rate = snapshot_max_refresh_rate
+	
 	_snapshot_generator.pivot_node = pivot_node
 	
 	_snapshot_generator.targets = targets
@@ -580,10 +591,6 @@ func _update_snapshot_generator() -> void:
 			
 			SpreadMode.TIME:
 				desired_snapshot_count = min(int(trail_lifetime / spread_time_interval) + 1, snapshot_store_size)
-				
-				print("time spread snapshot count: ", desired_snapshot_count)
-	
-	print("result: ", _get_smallest_circumference_rectangle(desired_snapshot_count))
 	
 	_snapshot_generator.atlas_dimensions = _get_smallest_circumference_rectangle(desired_snapshot_count)
 
