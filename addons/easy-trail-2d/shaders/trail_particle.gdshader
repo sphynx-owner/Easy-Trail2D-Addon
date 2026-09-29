@@ -2,9 +2,17 @@ shader_type canvas_item;
 
 render_mode blend_add;
 
-#define BLEND_DIV 0.4
+//#define DEBUG
 
-#define TIME_INFLUENCE_MUL 0.4
+#ifdef DEBUG
+#define BLEND_DIV 0.5
+
+#define TIME_INFLUENCE_MUL 0.0
+#else
+#define BLEND_DIV 0.25
+
+#define TIME_INFLUENCE_MUL 0.25
+#endif
 
 instance uniform int atlas_h_frames;
 
@@ -42,6 +50,8 @@ float interleaved_gradient_noise(vec2 uv, int FrameId){
 
 varying flat vec2 stretch_offset;
 
+varying flat int atlas_frame;
+
 varying flat vec2 total_scale;
 
 varying flat vec2 atlas_uv_offset;
@@ -73,10 +83,10 @@ void vertex() {
 	int atlas_frame_count = atlas_h_frames * atlas_v_frames;
 	
 	// get the atlas_frame to use
-	int atlas_frame = manual ? manual_atlas_frame : int(round(COLOR.g));
+	atlas_frame = manual ? manual_atlas_frame : int(round(COLOR.g));
 	
 	// in case of falty frame vs frame count, we modulate
-	atlas_frame = atlas_frame % atlas_frame_count;
+	atlas_frame = (atlas_frame + atlas_frame_count) % atlas_frame_count;
 	
 	// get the integer frame coord of the current frame (row, column)
 	ivec2 atlas_frame_coord =
@@ -209,9 +219,22 @@ void fragment() {
 	float influence = 1.0 - final_time * TIME_INFLUENCE_MUL;
 	
 	COLOR = vec4(
-		final_time * BLEND_DIV * influence,
-		side_offset * BLEND_DIV * influence,
-		alpha * BLEND_DIV * influence,
-		BLEND_DIV * influence
+#ifdef DEBUG
+		float(manual),
+		float(atlas_frame) / 10.0,
+		1.0,
+		0.5
+#else
+		// Because influence is on a per-particle basis, we cannot
+		// divide it's accumulated value on the canvas group, it has
+		// to be taken into account in here. Since the alpha channel
+		// multiplies itself before adding itself to the colr with blend_add
+		// we need to apply it the sqare root of the influence, and account for
+		// that in the data channels so that the full influence is applied to them.
+		final_time * sqrt(influence),
+		side_offset * sqrt(influence),
+		alpha * sqrt(influence),
+		BLEND_DIV * sqrt(influence)
+#endif
 	) * visible;
 }

@@ -23,82 +23,6 @@ enum TrailType {STRETCH, GHOST}
 
 enum SpreadMode {DISTANCE, TIME}
 
-static var DYNAMIC_PROPERTIES: Array = [
-	{
-		"name": "spread_mode",
-		"type": TYPE_INT,
-		"hint": PROPERTY_HINT_ENUM,
-		"hint_string": "Distance, Time",
-	},
-	(func(trail_generator: TrailGenerator) -> Array:
-		if trail_generator.trail_type == TrailType.STRETCH:
-			return [
-				{
-					"name": "dynamic_trail_head",
-					"type": TYPE_BOOL,
-					"hint": PROPERTY_HINT_NONE,
-					"hint_string": "",
-				},
-				{
-					"name": "stretch_sample_count",
-					"type": TYPE_INT,
-					"hint": PROPERTY_HINT_NONE,
-					"hint_string": "",
-				},
-			]
-			
-		else:
-			return []),
-	(func(trail_generator: TrailGenerator) -> Array:
-		if trail_generator.automatic:
-			return [
-				{
-					"name": "speed_threshold",
-					"type": TYPE_FLOAT,
-					"hint": PROPERTY_HINT_NONE,
-					"hint_string": "",
-				}
-			]
-			
-		else:
-			return [
-				{
-					"name": "enabled",
-					"type": TYPE_BOOL,
-					"hint": PROPERTY_HINT_NONE,
-					"hint_string": "",
-				}
-			]),
-	(func(trail_generator: TrailGenerator) -> Array:
-		if trail_generator.spread_mode == SpreadMode.DISTANCE:
-			return [
-				{
-					"name": "distance_spread",
-					"type": TYPE_FLOAT,
-					"hint": PROPERTY_HINT_NONE,
-					"hint_string": "",
-				},
-				{
-					"name": "reserved_frames",
-					"type": TYPE_INT,
-					"hint": PROPERTY_HINT_RANGE,
-					"hint_string": "1, 100",
-				},
-			]
-			
-		elif trail_generator.spread_mode == SpreadMode.TIME:
-			return [
-				{
-					"name": "time_spread",
-					"type": TYPE_FLOAT,
-					"hint": PROPERTY_HINT_RANGE,
-					"hint_string": "0.01, 1, or_greater",
-				}
-			]
-			
-		else:
-			return []),
-]
 
 ## The list of nodes that will be trailed.
 @export var targets: Array[Node2D]:
@@ -153,7 +77,12 @@ static var DYNAMIC_PROPERTIES: Array = [
 ## An optimization where the trail will snapshot the targets
 ## once at its start, and use the same frame for the rest
 ## of its activation.
-@export var single_snapshot: bool = false
+@export var single_snapshot: bool = false:
+	set(value):
+		if single_snapshot == value:
+			return
+		
+		_update_snapshot_generator()
 
 # TODO: abstract these through better properties
 ## Whether the trail generates discrete snapshots of the element at 
@@ -170,6 +99,28 @@ static var DYNAMIC_PROPERTIES: Array = [
 		
 		_update_particles()
 
+@export_group("stretch settings", "stretch_")
+
+## This would make it so that the _leading_sprite, which dynamically stretches
+## with the subject also gets visually updated. It is mainly relevant for 
+## elements that significantly change while they move, and it will 
+## require running the snapshot generation each frame, so use carefully
+@export var stretch_dynamic_trail_head: bool = true:
+	set(value):
+		if stretch_dynamic_trail_head == value:
+			return
+		
+		stretch_dynamic_trail_head = value
+
+@export var stretch_sample_count: int = 5:
+	set(value):
+		if stretch_sample_count == value:
+			return
+		
+		stretch_sample_count = value
+		
+		_update_particles()
+
 ## The lifetime of the generated trail particles
 @export var trail_lifetime: float = 1.0:
 	set(value):
@@ -180,16 +131,31 @@ static var DYNAMIC_PROPERTIES: Array = [
 		
 		_update_particles()
 
+@export_group("activation settings", "activate_")
+
 ## Setting this to `true` would let the trail generator enable
-## itself automatically based on *speed_threshold*
-@export var automatic: bool = true:
+## itself automatically based on *activate_speed_threshold*
+@export var activate_automatic: bool = true:
 	set(value):
-		if automatic == value:
+		if activate_automatic == value:
 			return
 		
-		automatic = value
+		activate_automatic = value
 		
 		notify_property_list_changed()
+
+## Define the speed threshold of the subject's movement
+## in pixels per second for the trail generator to enable itself 
+## when set to *activate_automatic*
+@export var activate_speed_threshold: float = 0.0
+
+## This is overridden if *activate_automatic* is true
+@export var enabled: bool = true:
+	set(value):
+		if enabled == value:
+			return
+		
+		enabled = value
 
 @export var trail_texture: Texture2D:
 	set(value):
@@ -212,26 +178,6 @@ static var DYNAMIC_PROPERTIES: Array = [
 		
 		_update_canvas_group()
 
-## This would make it so that the _leading_sprite, which dynamically stretches
-## with the subject also gets visually updated. It is mainly relevant for 
-## elements that significantly change while they move, and it will 
-## require running the snapshot generation each frame, so use carefully
-@export_storage var dynamic_trail_head: bool = true:
-	set(value):
-		if dynamic_trail_head == value:
-			return
-		
-		dynamic_trail_head = value
-
-@export_storage var stretch_sample_count: int = 5:
-	set(value):
-		if stretch_sample_count == value:
-			return
-		
-		stretch_sample_count = value
-		
-		_update_particles()
-
 ## When enabled, you can manipulate [member look_direction],
 ## along side your movement of the character, and the result
 ## will be an intuitive sorting of the trail around your target.
@@ -242,24 +188,13 @@ static var DYNAMIC_PROPERTIES: Array = [
 ## will be sorted below the target, and vice versa.
 @export var movement_look_direction_sort: bool = false
 
-## Define the speed threshold of the subject's movement
-## in pixels per second for the trail generator to enable itself 
-## when set to *automatic*
-@export_storage var speed_threshold: float = 100.0
-
-## This is overridden if *automatic* is true
-@export_storage var enabled: bool = true:
-	set(value):
-		if enabled == value:
-			return
-		
-		enabled = value
+@export_group("spread settings", "spread_")
 
 ## Whether the trail generates based on distance traveled 
 ## or based on constant time intervals.
 ## It is export storage on purpose, so that it can appear in the
 ## correct place in the property list between custom properties
-@export_storage var spread_mode: SpreadMode = SpreadMode.TIME:
+@export var spread_mode: SpreadMode = SpreadMode.TIME:
 	set(value):
 		if spread_mode == value:
 			return
@@ -268,12 +203,12 @@ static var DYNAMIC_PROPERTIES: Array = [
 		
 		notify_property_list_changed()
 		
-		_update_reserved_frames()
+		_update_snapshot_generator()
 
 ## How far (in global units) does the element have to travel to generate 
 ## a trail particle, teleportation over large distances is supported to spread
 ## trail particles evenly.
-@export_storage var distance_spread: float = 25.0
+@export var spread_distance_interval: float = 25.0
 
 ## The minimum amount of desired separate sanpshot frames to use 
 ## when generating the trail. This would let you save past visuals of the 
@@ -281,39 +216,70 @@ static var DYNAMIC_PROPERTIES: Array = [
 ## Does not indicate final allocated frames count, but guarantees a minimum.
 ## When sperad mode is set to TIME, it is determined automatically, 
 ## But when spreading trail particles based on distance, a new snapshot
-## can be required potentially every frame, making it impossible to automatically
+## can be required potentially every frame, making it impossible to activate_automatically
 ## determine.
-@export_storage var reserved_frames: int = 16:
+@export var snapshots_stored_limit: int = 16:
 	set(value):
-		if reserved_frames == value:
+		if snapshots_stored_limit == value:
 			return
 		
-		reserved_frames = value
+		snapshots_stored_limit = value
 		
-		_update_reserved_frames()
+		_update_snapshot_generator()
+		
+		_update_particles()
 
 ## The time intervals between trail particle generation when the trail generator is enabled.
 ## When spread_mode is set to TIME, it also affects the reserved frame count of the snapshot generator
 ## as more concurrent past snapshots require more texture storage.
-@export_storage var time_spread: float = 0.1:
+@export var spread_time_interval: float = 0.1:
 	set(value):
-		if time_spread == value:
+		if spread_time_interval == value:
 			return
 		
-		time_spread = value
+		spread_time_interval = value
 		
-		_update_reserved_frames()
+		_update_snapshot_generator()
 		
 		_update_particles()
 
-@export_storage var max_refresh_rate: int = 15
+@export_storage var snapshots_refresh_rate: int = 15
+
+@export_group("particle emitter", "particles_")
+
+@export var particles_amount: int = 25:
+	set(value):
+		if particles_amount == value:
+			return
+		
+		particles_amount = value
+		
+		_update_particles()
+
+@export var particles_fixed_fps: int = 60:
+	set(value):
+		if particles_fixed_fps == value:
+			return
+		
+		particles_fixed_fps = value
+		
+		_update_particles()
+
+@export var particles_visibility_rect: Rect2 = Rect2(-500, -500, 1000, 1000):
+	set(value):
+		if particles_visibility_rect == value:
+			return
+		
+		particles_visibility_rect = value
+		
+		_update_particles()
 
 ## Use this in conjunction with [member movement_look_direction_sort] to 
 ## determine the sorting of the trail relatively to the target when moving
 ## horizontally.
 var look_direction: Vector2
 
-## Automatically being set taking 'enabled' and 'automatic' into account
+## Automatically being set taking 'enabled' and 'activate_automatic' into account
 var _is_enabled: bool = false:
 	set(value):
 		if value == _is_enabled:
@@ -335,17 +301,13 @@ var _reserved_frames: int = 1:
 			return
 		
 		_reserved_frames = value
-		
-		_update_snapshot_generator()
-		
-		_update_particles()
 
 ## The snapshot generator wrapped by this trail generator.
 ## It is in charge of managing snapshot atlases of the targets
 var _snapshot_generator: SnapshotGenerator
 
 ## The particle emitter wrapped by this trail generator.
-## It spawns particles that display the snapshots and automatically
+## It spawns particles that display the snapshots and activate_automatically
 ## destroys them according to their lifetime.
 var _particle_emitter: GPUParticles2D
 
@@ -386,8 +348,14 @@ func _init() -> void:
 	_snapshot_generator = SnapshotGenerator.new()
 
 
-func _get_property_list() -> Array[Dictionary]:
-	return _generate_dynamic_property_list_recursive(DYNAMIC_PROPERTIES)
+func _validate_property(property: Dictionary) -> void:
+	if property.name in ["stretch_dynamic_trail_head", "stretch_sample_count", "stretch settings"]:
+		if trail_type != TrailType.STRETCH:
+			property.usage &= ~PROPERTY_USAGE_EDITOR
+	
+	if property.name in ["enabled"]:
+		if activate_automatic:
+			property.usage &= ~PROPERTY_USAGE_EDITOR
 
 
 func _ready() -> void:
@@ -418,19 +386,9 @@ func _ready() -> void:
 	
 	_update_canvas_group()
 	
-	_update_reserved_frames()
-	
 	_particle_emitter = GPUParticles2D.new()
 	
 	_particle_emitter.emitting = false
-	
-	_particle_emitter.lifetime = 1.0
-	
-	# TODO @sphynx-owner: be more intentional
-	_particle_emitter.amount = 1000
-	
-	# TODO @sphynx-owner: be more intentional
-	_particle_emitter.fixed_fps = 120
 	
 	_particle_emitter.interpolate = false
 	
@@ -447,6 +405,8 @@ func _ready() -> void:
 	_particle_emitter.draw_order = GPUParticles2D.DRAW_ORDER_INDEX
 	
 	_particle_emitter.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	
+	_particle_emitter.process_priority = process_priority + 1
 	
 	add_child(_particle_emitter)
 	
@@ -512,15 +472,9 @@ func _process(delta: float) -> void:
 	
 	var speed: float = _frame_speed / delta
 	
-	_is_enabled = (speed > speed_threshold) if automatic else enabled
+	_is_enabled = (speed > activate_speed_threshold) if activate_automatic else enabled
 	
 	if _is_enabled:
-		if trail_type == TrailType.STRETCH:
-			if dynamic_trail_head:
-				_snapshot_generator.queue_snapshot(false)
-			
-			_update_leading_sprite()
-		
 		match spread_mode:
 			SpreadMode.TIME:
 				_time_spread_process(delta)
@@ -528,6 +482,11 @@ func _process(delta: float) -> void:
 			SpreadMode.DISTANCE:
 				_distance_spread_process(_frame_movement)
 		
+		if trail_type == TrailType.STRETCH:
+			if stretch_dynamic_trail_head:
+				_snapshot_generator.queue_snapshot(false)
+			
+			_update_leading_sprite()
 	
 	_past_position = _current_position
 	
@@ -557,15 +516,6 @@ func _generate_dynamic_property_list_recursive(
 	return _result_property_list
 
 
-func _update_reserved_frames() -> void:
-	match spread_mode:
-		SpreadMode.DISTANCE:
-			_reserved_frames = reserved_frames
-		
-		SpreadMode.TIME:
-			_reserved_frames = min(ceil(trail_lifetime / time_spread) + 1, 100)
-
-
 func _update_snapshot_generator() -> void:
 	if !_snapshot_generator:
 		return
@@ -578,9 +528,22 @@ func _update_snapshot_generator() -> void:
 	
 	_snapshot_generator.snapshot_resolution_scale = snapshot_resolution_scale
 	
-	# It is easier to simply create the smallest square atlas to contain the required 
+	var min_snapshot_count: int
+	
+	if single_snapshot:
+		min_snapshot_count = 1
+		
+	else:
+		match spread_mode:
+			SpreadMode.DISTANCE:
+				min_snapshot_count = snapshots_stored_limit
+			
+			SpreadMode.TIME:
+				min_snapshot_count = min(ceil(trail_lifetime / spread_time_interval) + 1, snapshots_stored_limit)
+	
+	# It is easiest to simply create the smallest square atlas to contain the required 
 	# reserved frames count.
-	var dimension: int = ceil(sqrt(_reserved_frames))
+	var dimension: int = ceil(sqrt(min_snapshot_count))
 	
 	_snapshot_generator.atlas_dimensions = Vector2i(dimension, dimension)
 
@@ -598,6 +561,12 @@ func _update_particles() -> void:
 		return
 	
 	_particle_emitter.lifetime = trail_lifetime
+	
+	_particle_emitter.amount = particles_amount
+	
+	_particle_emitter.fixed_fps = particles_fixed_fps
+	
+	_particle_emitter.visibility_rect = particles_visibility_rect
 	
 	_particle_emitter.set_instance_shader_parameter("atlas_h_frames", _snapshot_generator.atlas_dimensions.x)
 	
@@ -637,14 +606,14 @@ func _on_enabled() -> void:
 	_last_emit_time = _past_time
 	_last_emit_position = _past_position
 	
-	_time_buffer = time_spread if trail_type == TrailType.GHOST else 0.0
+	_time_buffer = spread_time_interval if trail_type == TrailType.GHOST else 0.0
 	
-	_distance_buffer = distance_spread if trail_type == TrailType.GHOST else 0.0
+	_distance_buffer = spread_distance_interval if trail_type == TrailType.GHOST else 0.0
 
 
 func _on_disabled() -> void:
 	if _last_emit_position != _past_position and trail_type == TrailType.STRETCH:
-		_emit_stretchy_particle(_current_position)
+		_emit_stretchy_particle(_current_position, -1)
 	
 	_leading_sprite.visible = false
 
@@ -652,7 +621,7 @@ func _on_disabled() -> void:
 func _time_spread_process(delta: float) -> void:
 	_time_buffer += delta
 	
-	if _time_buffer > time_spread:
+	if _time_buffer > spread_time_interval:
 		if !single_snapshot:
 			_snapshot_generator.queue_snapshot()
 		
@@ -661,9 +630,9 @@ func _time_spread_process(delta: float) -> void:
 				_emit_particle(_past_position)
 			
 			TrailType.STRETCH:
-				_emit_stretchy_particle(_current_position, -1 if !dynamic_trail_head else 0)
+				_emit_stretchy_particle(_current_position, -1 if !stretch_dynamic_trail_head else 0)
 		
-		_time_buffer = fmod(_time_buffer, time_spread)
+		_time_buffer = fmod(_time_buffer, spread_time_interval)
 
 
 func _distance_spread_process(delta: Vector2) -> void:
@@ -671,27 +640,27 @@ func _distance_spread_process(delta: Vector2) -> void:
 	
 	_distance_buffer += speed
 	
-	if _distance_buffer > distance_spread:
+	if _distance_buffer > spread_distance_interval:
 		if !single_snapshot:
 			_snapshot_generator.queue_snapshot()
 		
-		var starting_distance: float = distance_spread - (_distance_buffer - speed)
+		var starting_distance: float = spread_distance_interval - (_distance_buffer - speed)
 		
 		var direction: Vector2 = delta.normalized()
 		
 		var emit_position: Vector2 = _past_position + direction * starting_distance
 		
-		for i in int(_distance_buffer / distance_spread):
+		for i in int(_distance_buffer / spread_distance_interval):
 			match trail_type:
 				TrailType.GHOST:
 					_emit_particle(emit_position)
 				
 				TrailType.STRETCH:
-					_emit_stretchy_particle(emit_position, -1 if !dynamic_trail_head else 0)
+					_emit_stretchy_particle(emit_position, -1 if !stretch_dynamic_trail_head else 0)
 			
-			emit_position += direction * distance_spread
+			emit_position += direction * spread_distance_interval
 		
-		_distance_buffer = fmod(_distance_buffer, distance_spread)
+		_distance_buffer = fmod(_distance_buffer, spread_distance_interval)
 
 
 func _emit_stretchy_particle(p_position: Vector2, frame_offset: int = 0) -> void:
@@ -725,10 +694,10 @@ func _emit_particle(
 func _update_leading_sprite() -> void:
 	_leading_sprite.global_position = get_pivot_position() + Vector2(snapshot_rect.get_center())
 	
-	_leading_sprite.visible =  trail_type == TrailType.STRETCH
+	_leading_sprite.visible = trail_type == TrailType.STRETCH and _last_emit_position != _current_position
 	
 	_leading_sprite.set_instance_shader_parameter("manual", true)
-	_leading_sprite.set_instance_shader_parameter("manual_atlas_frame", _snapshot_generator.get_current_frame(-1 if !dynamic_trail_head else 0))
+	_leading_sprite.set_instance_shader_parameter("manual_atlas_frame", _snapshot_generator.get_future_latest_frame(-1) if !stretch_dynamic_trail_head else _snapshot_generator.get_current_frame())
 	_leading_sprite.set_instance_shader_parameter("manual_stretch_offset", _last_emit_position - _current_position)
 	_leading_sprite.set_instance_shader_parameter("manual_stretch_time", _current_time - _last_emit_time)
 	_leading_sprite.set_instance_shader_parameter("manual_age", 0)
