@@ -2,7 +2,7 @@ shader_type canvas_item;
 
 render_mode blend_add;
 
-//#define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
 #define BLEND_DIV 0.5

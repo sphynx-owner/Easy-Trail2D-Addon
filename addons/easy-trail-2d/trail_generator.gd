@@ -227,6 +227,8 @@ enum SpreadMode {DISTANCE, TIME}
 		notify_property_list_changed()
 		
 		_update_snapshot_generator()
+		
+		_update_particles()
 
 ## How far (in global units) does the element have to travel to generate 
 ## a trail particle, teleportation over large distances is supported to spread
@@ -249,6 +251,7 @@ enum SpreadMode {DISTANCE, TIME}
 
 @export_group("particle emitter", "particles_")
 
+## Controls the amount of particles managed by the particle emitter, see [member GPUParticles2D.amount]
 @export var particles_amount: int = 50:
 	set(value):
 		if particles_amount == value:
@@ -258,6 +261,7 @@ enum SpreadMode {DISTANCE, TIME}
 		
 		_update_particles()
 
+## Controls the refresh rate of particles managed by the particle emitter, see [member GPUParticles2D.fixed_fps]
 @export var particles_fixed_fps: int = 60:
 	set(value):
 		if particles_fixed_fps == value:
@@ -267,6 +271,7 @@ enum SpreadMode {DISTANCE, TIME}
 		
 		_update_particles()
 
+## Controls the visibility rect of the particle emitter, see [member GPUParticles2D.visibility_rect]
 @export var particles_visibility_rect: Rect2 = Rect2(-5000, -5000, 10000, 10000):
 	set(value):
 		if particles_visibility_rect == value:
@@ -276,22 +281,24 @@ enum SpreadMode {DISTANCE, TIME}
 		
 		_update_particles()
 
-## When enabled, you can manipulate [member look_direction],
-## along side your movement of the character, and the result
+@export_group("sort settings", "sort_")
+
+## When [code]ture[/code] you can manipulate [member sort_look_direction],
+## along side the movement of the character, and the result
 ## will be an intuitive sorting of the trail around your target.
 ## If you are moving upwards, the trail will be sorted on top of
 ## the target. If downwards, under. 
 ## The look direction will determine the sorting of the trail when
 ## moving perfectly horizontally. If facing downwards, the trail
 ## will be sorted below the target, and vice versa.
-@export var sort_by_look_direction: bool = false
+@export var sort_by_movement_and_look_direction: bool = false
 
-## Use this in conjunction with [member sort_by_look_direction] to 
+## Use this in conjunction with [member sort_by_movement_and_look_direction] to 
 ## determine the sorting of the trail relatively to the target when moving
 ## horizontally.
-@export var look_direction: Vector2
+@export var sort_look_direction: Vector2
 
-## Automatically being set taking 'enabled' and 'activate_automatic' into account
+## Automatically set, use [member activate_automatic] and [member enable] instaed
 var _is_enabled: bool = false:
 	set(value):
 		if value == _is_enabled:
@@ -305,45 +312,46 @@ var _is_enabled: bool = false:
 		else:
 			_on_disabled()
 
-## The minimum amount of frames that the snapshot generator needs to 
-## save into an atlas
-var _reserved_frames: int = 1:
-	set(value):
-		if _reserved_frames == value:
-			return
-		
-		_reserved_frames = value
-
-## The snapshot generator wrapped by this trail generator.
-## It is in charge of managing snapshot atlases of the targets
+## The snapshot generator that's spawned and managed by this trail generator.
+## It is in charge of generating and managing snapshot atlases of the targets
 var _snapshot_generator: SnapshotGenerator
 
-## The particle emitter wrapped by this trail generator.
-## It spawns particles that display the snapshots and activate_automatically
-## destroys them according to their lifetime.
+## The particle emitter that's spawned and managed by this trail generator.
+## It spawns particles that display snapshots and behave over time.
 var _particle_emitter: GPUParticles2D
 
-## A sprite that sits at the head of the trail and used 
-## for seamless generation of stretched trails
+## A sprite that dynamically stretches to the [member pivot_node] and is used 
+## for seamless generation of stretched particles.
 var _leading_sprite: Sprite2D
 
+## Used for particle generation, and automatic activation.
 var _current_position: Vector2
 
-## Used when generating particles and detecting target movement
+## Used for particle generation, and automatic activation.
 var _past_position: Vector2
 
+## Used to connect between stretched particles.
 var _last_emit_position: Vector2
 
+## When genreating stretchy particles, used to let the particle know
+## over how long of a period was it being stretched for before it was actually spawned.
 var _current_time: float = 0.0
 
+## When genreating stretchy particles, used to let the particle know
+## over how long of a period was it being stretched for before it was actually spawned.
 var _past_time: float = 0.0
 
+## Used for time-based spreading of particles
 var _time_buffer: float = 0.0
 
+## When genreating stretchy particles, used to let the particle know
+## over how long of a period was it being stretched for before it was actually spawned.
 var _last_emit_time: float = 0.0
 
+## Used for distance-based spreading of particles
 var _distance_buffer: float = 0.0
 
+## Used for the initial process of the trail generator to prevent artifacts and glitches at spawn.
 var _first_process: bool = true
 
 
@@ -353,33 +361,38 @@ func _init() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	
-	texture_filter = TEXTURE_FILTER_NEAREST
-	
 	process_priority = 1
 	
 	_snapshot_generator = SnapshotGenerator.new()
 
 
 func _validate_property(property: Dictionary) -> void:
+	var should_hide_property: bool = false
+	
 	if property.name in ["stretch_dynamic_trail_head", "stretch_sample_count", "stretch settings"]:
 		if trail_type != TrailType.STRETCH:
-			property.usage &= ~PROPERTY_USAGE_EDITOR
-	
-	if property.name in ["enabled"]:
-		if activate_automatic:
-			property.usage &= ~PROPERTY_USAGE_EDITOR
-	
-	if spread_mode == SpreadMode.TIME:
-		if property.name in ["spread_distance_interval"]:
-			property.usage &= ~PROPERTY_USAGE_EDITOR
+			should_hide_property = true
 		
-	else:
-		if property.name in ["spread_time_interval"]:
-			property.usage &= ~PROPERTY_USAGE_EDITOR
-	
-	if property.name in ["snapshot_store_size"]:
+	elif property.name in ["enabled"]:
+		if activate_automatic:
+			should_hide_property = true
+		
+	elif property.name in ["spread_distance_interval"]:
+		should_hide_property = spread_mode == SpreadMode.TIME
+		
+	elif property.name in ["spread_time_interval"]:
+		should_hide_property = spread_mode != SpreadMode.TIME
+		
+	elif property.name in ["snapshot_store_size"]:
 		if snapshot_single:
-			property.usage &= ~PROPERTY_USAGE_EDITOR
+			should_hide_property = true
+		
+	elif property.name in ["sort_look_direction"]:
+		if !sort_by_movement_and_look_direction:
+			should_hide_property = true
+	
+	if should_hide_property:
+		property.usage &= ~PROPERTY_USAGE_EDITOR
 
 
 func _ready() -> void:
@@ -430,11 +443,10 @@ func _ready() -> void:
 	
 	_particle_emitter.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	
+	# TODO @sphynx-owner: figure out if necessary
 	_particle_emitter.process_priority = process_priority + 1
 	
 	add_child(_particle_emitter)
-	
-	_particle_emitter.position = Vector2(0, 0)
 	
 	_leading_sprite = Sprite2D.new()
 	
@@ -485,7 +497,7 @@ func _process(delta: float) -> void:
 	
 	var _frame_speed: float = _frame_movement.length()
 	
-	if sort_by_look_direction:
+	if sort_by_movement_and_look_direction:
 		var normalized_velocity: Vector2 = _frame_movement.normalized()
 		
 		var is_horizontal: bool = abs(normalized_velocity.x) > VERTICAL_SPEED_THRESHOLD
@@ -493,7 +505,7 @@ func _process(delta: float) -> void:
 		var target_z_index: int = pivot_node.z_index
 		
 		if is_horizontal:
-			z_index = target_z_index + (1 if look_direction.y < 0 else -1)
+			z_index = target_z_index + (1 if sort_look_direction.y < 0 else -1)
 			
 		else:
 			z_index = target_z_index + (1 if normalized_velocity.y < 0 else -1)
@@ -567,7 +579,11 @@ func _update_snapshot_generator() -> void:
 				desired_snapshot_count = snapshot_store_size
 			
 			SpreadMode.TIME:
-				desired_snapshot_count = min(ceil(trail_lifetime / spread_time_interval) + 1, snapshot_store_size)
+				desired_snapshot_count = min(int(trail_lifetime / spread_time_interval) + 1, snapshot_store_size)
+				
+				print("time spread snapshot count: ", desired_snapshot_count)
+	
+	print("result: ", _get_smallest_circumference_rectangle(desired_snapshot_count))
 	
 	_snapshot_generator.atlas_dimensions = _get_smallest_circumference_rectangle(desired_snapshot_count)
 
