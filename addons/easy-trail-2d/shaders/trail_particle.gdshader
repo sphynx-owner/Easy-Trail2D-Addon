@@ -236,5 +236,5 @@ void fragment() {
 		alpha * sqrt(influence),
 		BLEND_DIV * sqrt(influence)
 #endif
-	) * visible;
+	) * visible * step(final_time, 0.999);
 }
