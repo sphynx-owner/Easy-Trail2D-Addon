@@ -90,36 +90,6 @@ enum SpreadMode {DISTANCE, TIME}
 		
 		_update_particles()
 
-## The desired amount of maximum stored past snapshots for generated trail particles to use.
-## Does not indicate final allocation size, an algorithm takes the value and finds an acceptable
-## larger nearby value that can be turned into a similarly-sided rectangle.
-## When [member spread_mode] is set to [code]SpreadMode.TIME[/code], that value is used as a maximum,
-## but a smaller value would be automatically derived from the trail's [member trail_lifetime] and
-## [member spread_time_interval].
-@export var snapshot_store_size: int = 16:
-	set(value):
-		if snapshot_store_size == value:
-			return
-		
-		snapshot_store_size = value
-		
-		_update_snapshot_generator()
-		
-		_update_particles()
-
-## A limit of how many snapshots can be taken over time. Can be used as an alternative
-## to an othrewise larger [member snapshot_store_size]
-@export var snapshot_max_refresh_rate: int = 15:
-	set(value):
-		if snapshot_max_refresh_rate == value:
-			return
-		
-		snapshot_max_refresh_rate = value
-		
-		_update_snapshot_generator()
-		
-		_update_particles()
-
 @export_group("trail settings", "trail_")
 
 ## When set to [code]TrailType.GHOST[/code], generates discrete ghost particles at 
@@ -144,6 +114,8 @@ enum SpreadMode {DISTANCE, TIME}
 		
 		trail_lifetime = value
 		
+		_update_snapshot_generator()
+		
 		_update_particles()
 
 ## The texture to be used for the particle's color
@@ -166,6 +138,18 @@ enum SpreadMode {DISTANCE, TIME}
 		trail_alpha_texture = value
 		
 		_update_canvas_group()
+
+## A limit of how many snapshots can be taken over time.
+@export var trail_max_refresh_rate: int = 15:
+	set(value):
+		if trail_max_refresh_rate == value:
+			return
+		
+		trail_max_refresh_rate = value
+		
+		_update_snapshot_generator()
+		
+		_update_particles()
 
 @export_group("stretch settings", "stretch_")
 
@@ -363,6 +347,12 @@ var _distance_buffer: float = 0.0
 ## Used for the initial process of the trail generator to prevent artifacts and glitches at spawn.
 var _first_process: bool = true
 
+var _refresh_rate_time_buffer: float = 0.0
+
+var _can_update_snapshots: bool = false
+
+var _snapshot_updated: bool = false
+
 
 #region Virtual Methods
 
@@ -521,6 +511,12 @@ func _process(delta: float) -> void:
 	
 	var speed: float = _frame_speed / delta
 	
+	_refresh_rate_time_buffer += delta
+	
+	if _refresh_rate_time_buffer > (1.0 / trail_max_refresh_rate):
+		_refresh_rate_time_buffer = 0.0
+		_can_update_snapshots = true
+	
 	_is_enabled = (speed > activate_speed_threshold) if activate_automatic else enabled
 	
 	if _is_enabled:
@@ -540,6 +536,10 @@ func _process(delta: float) -> void:
 	_past_position = _current_position
 	
 	_past_time = _current_time
+	
+	if _snapshot_updated:
+		_can_update_snapshots = false
+		_snapshot_updated = false
 
 #endregion
 
@@ -569,8 +569,6 @@ func _update_snapshot_generator() -> void:
 	if !_snapshot_generator:
 		return
 	
-	_snapshot_generator.max_refresh_rate = snapshot_max_refresh_rate
-	
 	_snapshot_generator.pivot_node = pivot_node
 	
 	_snapshot_generator.targets = targets
@@ -587,10 +585,10 @@ func _update_snapshot_generator() -> void:
 	else:
 		match spread_mode:
 			SpreadMode.DISTANCE:
-				desired_snapshot_count = snapshot_store_size
+				desired_snapshot_count = int(trail_lifetime * trail_max_refresh_rate) + 1
 			
 			SpreadMode.TIME:
-				desired_snapshot_count = min(int(trail_lifetime / spread_time_interval) + 1, snapshot_store_size)
+				desired_snapshot_count = min(int(trail_lifetime / spread_time_interval) + 1, int(trail_lifetime * trail_max_refresh_rate) + 1)
 	
 	_snapshot_generator.atlas_dimensions = _get_smallest_circumference_rectangle(desired_snapshot_count)
 
@@ -656,7 +654,7 @@ func _on_enabled() -> void:
 
 func _on_disabled() -> void:
 	if _last_emit_position != _past_position and trail_type == TrailType.STRETCH:
-		_emit_stretchy_particle(_current_position, -1)
+		_emit_stretchy_particle(_current_position, _snapshot_generator.get_latest_frame())
 	
 	_leading_sprite.visible = false
 
@@ -665,14 +663,20 @@ func _time_spread_process(delta: float) -> void:
 	_time_buffer += delta
 	
 	if _time_buffer > spread_time_interval:
-		_snapshot_generator.queue_snapshot()
+		if stretch_dynamic_trail_head and _can_update_snapshots:
+			_snapshot_generator.queue_snapshot()
+			_snapshot_updated = true
 		
 		match trail_type:
 			TrailType.GHOST:
-				_emit_particle(_past_position)
+				_emit_particle(_past_position, _snapshot_generator.get_latest_frame())
 			
 			TrailType.STRETCH:
-				_emit_stretchy_particle(_current_position, -1 if !stretch_dynamic_trail_head else 0)
+				_emit_stretchy_particle(_past_position, _snapshot_generator.get_latest_frame())
+		
+		if !stretch_dynamic_trail_head and _can_update_snapshots:
+			_snapshot_generator.queue_snapshot()
+			_snapshot_updated = true
 		
 		_time_buffer = fmod(_time_buffer, spread_time_interval)
 
@@ -683,7 +687,9 @@ func _distance_spread_process(delta: Vector2) -> void:
 	_distance_buffer += speed
 	
 	if _distance_buffer > spread_distance_interval:
-		_snapshot_generator.queue_snapshot()
+		if stretch_dynamic_trail_head and _can_update_snapshots:
+			_snapshot_generator.queue_snapshot()
+			_snapshot_updated = true
 		
 		var starting_distance: float = spread_distance_interval - (_distance_buffer - speed)
 		
@@ -694,22 +700,26 @@ func _distance_spread_process(delta: Vector2) -> void:
 		for i in int(_distance_buffer / spread_distance_interval):
 			match trail_type:
 				TrailType.GHOST:
-					_emit_particle(emit_position)
+					_emit_particle(emit_position, _snapshot_generator.get_latest_frame())
 				
 				TrailType.STRETCH:
-					_emit_stretchy_particle(emit_position, -1 if !stretch_dynamic_trail_head else 0)
+					_emit_stretchy_particle(emit_position, _snapshot_generator.get_latest_frame())
 			
 			emit_position += direction * spread_distance_interval
+		
+		if !stretch_dynamic_trail_head and _can_update_snapshots:
+			_snapshot_generator.queue_snapshot()
+			_snapshot_updated = true
 		
 		_distance_buffer = fmod(_distance_buffer, spread_distance_interval)
 
 
-func _emit_stretchy_particle(p_position: Vector2, frame_offset: int = 0) -> void:
+func _emit_stretchy_particle(p_position: Vector2, atlas_frame: int) -> void:
 	var stretch: Vector2 = _last_emit_position - p_position
 	
 	var particle_stretch_time: float = _current_time - _last_emit_time
 	
-	_emit_particle(p_position, frame_offset, stretch, particle_stretch_time)
+	_emit_particle(p_position, atlas_frame, stretch, particle_stretch_time)
 	
 	_last_emit_position = p_position
 	
@@ -718,14 +728,14 @@ func _emit_stretchy_particle(p_position: Vector2, frame_offset: int = 0) -> void
 
 func _emit_particle(
 	p_position: Vector2,
-	frame_offset: int = 0,
+	atlas_frame: int,
 	stretch: Vector2 = Vector2.ZERO,
 	stretch_time: float = 0.0
 ) -> void:
 	_particle_emitter.emit_particle(
 		Transform2D(0, p_position + Vector2(snapshot_rect.get_center())),
 		Vector2(),
-		Color(stretch_time, _snapshot_generator.get_current_frame(frame_offset), 0, 1.0),
+		Color(stretch_time, atlas_frame, 0, 1.0),
 		# HACK @sphynx-owner: we reserve the green channel for the age of the particle, 
 		Color(stretch.x, 0, stretch.y, trail_lifetime),
 		GPUParticles2D.EMIT_FLAG_POSITION | GPUParticles2D.EMIT_FLAG_CUSTOM | GPUParticles2D.EMIT_FLAG_COLOR
@@ -738,7 +748,7 @@ func _update_leading_sprite() -> void:
 	_leading_sprite.visible = trail_type == TrailType.STRETCH and _last_emit_position != _current_position
 	
 	_leading_sprite.set_instance_shader_parameter("manual", true)
-	_leading_sprite.set_instance_shader_parameter("manual_atlas_frame", _snapshot_generator.get_future_latest_frame(-1) if !stretch_dynamic_trail_head else _snapshot_generator.get_current_frame())
+	_leading_sprite.set_instance_shader_parameter("manual_atlas_frame", _snapshot_generator.get_naive_current_frame() if stretch_dynamic_trail_head else _snapshot_generator.get_latest_frame())
 	_leading_sprite.set_instance_shader_parameter("manual_stretch_offset", _last_emit_position - _current_position)
 	_leading_sprite.set_instance_shader_parameter("manual_stretch_time", _current_time - _last_emit_time)
 	_leading_sprite.set_instance_shader_parameter("manual_age", 0)
