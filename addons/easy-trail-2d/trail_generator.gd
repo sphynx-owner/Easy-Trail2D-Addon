@@ -242,7 +242,7 @@ enum SpreadMode {DISTANCE, TIME}
 ## How far (in global units) does the element have to travel to generate 
 ## a trail particle, teleportation over large distances is supported to spread
 ## trail particles evenly.
-@export var spread_distance_interval: float = 25.0
+@export var spread_distance_interval: float = 50.0
 
 ## The time intervals between trail particle generation when the trail generator is enabled.
 ## When spread_mode is set to TIME, it also affects the reserved frame count of the snapshot generator
