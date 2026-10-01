@@ -7,3 +7,5 @@ This addon contains a **TrailGenerator** class which can easily generate detaile
 1. Install the [easy snapshot generator addon](https://github.com/sphynx-owner/Easy-Snapshot-Generator).
 
 2. Download the latest release, and move the contents of `addons` into your project's addons folder.
+
+3. Go to **Project**->**Project Settings**->**Plugins** and ensure that the *Easy Trail2D* plugin is enabled.
