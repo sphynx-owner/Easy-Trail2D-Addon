@@ -62,6 +62,8 @@ varying flat float lifespan;
 
 varying flat float stretch_time;
 
+varying flat float random_side_offset;
+
 void vertex() {
 	// We get the offset along which we stretch the texture
 	stretch_offset = manual ? manual_stretch_offset : INSTANCE_CUSTOM.xz;
@@ -135,6 +137,8 @@ void vertex() {
 	
 	// get the lifespan to use
 	lifespan = manual ? manual_lifespan : INSTANCE_CUSTOM.w;
+	
+	random_side_offset = COLOR.b;
 }
 
 void fragment() {
@@ -208,6 +212,8 @@ void fragment() {
 		}
 		
 		visible = step(0.00001, alpha);
+		
+		side_offset = random_side_offset;
 		
 		// Setting the time to 1 as that is the neutral value in the case of this
 		// implementation.
