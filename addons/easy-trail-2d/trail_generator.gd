@@ -193,10 +193,20 @@ var _pivot_node_getter_gate: bool = false
 
 @export_group("ghost settings", "ghost_")
 
+## Controls the amount of unique vertical positions on the [member trail_texture]
+## to sample from for individual ghost particles. As the particle ages, the sample
+## position moves to the left, so you can animate individual colors by varying them horizontally.
 @export var ghost_unique_color_count: int = 10
 
+## When [code]true[/code], the vertical sample positions on the [member trail_texture]
+## are chosen from at random. When [code]false[/code], they are chosen in looped order.
 @export var ghost_randomize_colors: bool = false
 
+## When [code]true[/code], drastically changes the behavior of the ghost trail mode
+## to now also include the original color of the target instaed of just the silhouette.
+## Note that the original color is modulated by the color of the [member trail_texture] still,
+## so if you want the source color you can set the [member trail_texture] to [code]null[/code],
+## or to a plain white texture. 
 @export var ghost_use_source_color: bool = false:
 	set(value):
 		if ghost_use_source_color == value:
