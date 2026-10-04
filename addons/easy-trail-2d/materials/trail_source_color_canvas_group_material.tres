@@ -1,0 +1,6 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://coulapwxiu7go"]
+
+[ext_resource type="Shader" uid="uid://dd8ahehcjqnmp" path="res://addons/easy-trail-2d/shaders/trail_source_color_canvas_group_shader.gdshader" id="1_ymyvr"]
+
+[resource]
+shader = ExtResource("1_ymyvr")

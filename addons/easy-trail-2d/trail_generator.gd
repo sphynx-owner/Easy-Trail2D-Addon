@@ -7,11 +7,17 @@ extends CanvasGroup
 const DEFAULT_CANVAS_GROUP_MATERIAL: Material = \
 preload("res://addons/easy-trail-2d/materials/trail_canvas_group_material.tres")
 
+const SOURCE_COLOR_CANVAS_GROUP_MATERIAL: Material = \
+preload("res://addons/easy-trail-2d/materials/trail_source_color_canvas_group_material.tres")
+
 const DEFAULT_TRAIL_PROCESS_MATERIAL: Material = \
 preload("res://addons/easy-trail-2d/materials/trail_emitter_material.tres")
 
 const DEFAULT_TRAIL_PARTICLE_MATERIAL: Material = \
 preload("res://addons/easy-trail-2d/materials/trail_particle_material.tres")
+
+const SOURCE_COLOR_PARTICLE_MATERIAL: Material = \
+preload("res://addons/easy-trail-2d/materials/trail_source_color_particle_material.tres")
 
 # The threshold, in degrees above the horizontal line, 
 # which classify the normalized movement direction as non-horizontal.
@@ -36,18 +42,17 @@ enum SpreadMode {DISTANCE, TIME}
 ## first target in [member targets]
 @export var pivot_node: Node2D:
 	set(value):
-		if pivot_node == value:
-			return
-		
 		pivot_node = value
 		
 		_update_snapshot_generator()
 	
 	get():
-		if _snapshot_generator:
+		if _snapshot_generator and !_pivot_node_getter_gate:
 			return _snapshot_generator.pivot_node
 		
 		return pivot_node
+
+var _pivot_node_getter_gate: bool = false
 
 @export_group("snapshot settings", "snapshot_")
 
@@ -104,6 +109,8 @@ enum SpreadMode {DISTANCE, TIME}
 		
 		notify_property_list_changed()
 		
+		_update_materials()
+		
 		_update_particles()
 
 ## The lifetime of trail particles
@@ -126,7 +133,7 @@ enum SpreadMode {DISTANCE, TIME}
 		
 		trail_texture = value
 		
-		_update_canvas_group()
+		_update_trail_textures()
 
 ## Controls the alpha of the particle over time, can be used
 ## for decay and more.
@@ -137,7 +144,7 @@ enum SpreadMode {DISTANCE, TIME}
 		
 		trail_alpha_texture = value
 		
-		_update_canvas_group()
+		_update_trail_textures()
 
 ## A limit on how many separate snapshots can be taken over time.
 @export var trail_max_refresh_rate: int = 15:
@@ -189,6 +196,23 @@ enum SpreadMode {DISTANCE, TIME}
 @export var ghost_unique_color_count: int = 10
 
 @export var ghost_randomize_colors: bool = false
+
+@export var ghost_use_source_color: bool = false:
+	set(value):
+		if ghost_use_source_color == value:
+			return
+		
+		ghost_use_source_color = value
+		
+		_update_materials()
+		
+		_update_particles()
+	
+	get():
+		if trail_type != TrailType.GHOST:
+			return false
+		
+		return ghost_use_source_color
 
 @export_group("activation settings", "activate_")
 
@@ -389,7 +413,7 @@ func _validate_property(property: Dictionary) -> void:
 		if trail_type != TrailType.STRETCH:
 			should_hide_property = true
 		
-	elif property.name in ["ghost_unique_color_count", "ghost_randomize_colors", "ghost settings"]:
+	elif property.name in ["ghost_unique_color_count", "ghost_randomize_colors", "ghost_use_source_color", "ghost settings"]:
 		if trail_type != TrailType.GHOST:
 			should_hide_property = true
 		
@@ -402,10 +426,6 @@ func _validate_property(property: Dictionary) -> void:
 		
 	elif property.name in ["spread_time_interval"]:
 		should_hide_property = spread_mode != SpreadMode.TIME
-		
-	elif property.name in ["snapshot_store_size"]:
-		if snapshot_single:
-			should_hide_property = true
 		
 	elif property.name in ["sort_look_direction"]:
 		if !sort_by_movement_and_look_direction:
@@ -436,12 +456,7 @@ func _ready() -> void:
 	# which it adds itself off its _ready(), by then.
 	_update_snapshot_generator()
 	
-	if !material:
-		material = DEFAULT_CANVAS_GROUP_MATERIAL.duplicate()
-	
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	
-	_update_canvas_group()
 	
 	_particle_emitter = GPUParticles2D.new()
 	
@@ -450,8 +465,6 @@ func _ready() -> void:
 	_particle_emitter.interpolate = false
 	
 	_particle_emitter.process_material = DEFAULT_TRAIL_PROCESS_MATERIAL
-	
-	_particle_emitter.material = DEFAULT_TRAIL_PARTICLE_MATERIAL
 	
 	_particle_emitter.texture = _snapshot_generator.atlas_texture_2d
 	
@@ -472,8 +485,6 @@ func _ready() -> void:
 	
 	_leading_sprite.texture = _snapshot_generator.atlas_texture_2d
 	
-	_leading_sprite.material = DEFAULT_TRAIL_PARTICLE_MATERIAL
-	
 	_leading_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	
 	_leading_sprite.set_instance_shader_parameter("manual", true)
@@ -481,6 +492,10 @@ func _ready() -> void:
 	_leading_sprite.visible = false
 	
 	add_child(_leading_sprite)
+	
+	_update_materials()
+	
+	_update_trail_textures()
 	
 	_update_particles()
 
@@ -568,6 +583,8 @@ func _process(delta: float) -> void:
 			if stretch_dynamic_trail_head:
 				_snapshot_generator.queue_snapshot(false)
 	
+	_update_srgb_correction()
+	
 	_update_leading_sprite()
 	
 	_past_position = _current_position
@@ -606,7 +623,11 @@ func _update_snapshot_generator() -> void:
 	if !_snapshot_generator:
 		return
 	
+	_pivot_node_getter_gate = true
+	
 	_snapshot_generator.pivot_node = pivot_node
+	
+	_pivot_node_getter_gate = false
 	
 	_snapshot_generator.targets = targets
 	
@@ -634,12 +655,38 @@ func _update_snapshot_generator() -> void:
 	trail_snapshot_store_size = atlas_dimensions.x * atlas_dimensions.y
 
 
-func _update_canvas_group() -> void:
+func _update_materials() -> void:
+	if !_particle_emitter:
+		return
+	
+	if !ghost_use_source_color:
+		material = DEFAULT_CANVAS_GROUP_MATERIAL.duplicate()
+		
+		_leading_sprite.material = DEFAULT_TRAIL_PARTICLE_MATERIAL
+		
+		_particle_emitter.material = DEFAULT_TRAIL_PARTICLE_MATERIAL
+		
+	else:
+		material = SOURCE_COLOR_CANVAS_GROUP_MATERIAL
+		
+		_leading_sprite.material = SOURCE_COLOR_PARTICLE_MATERIAL.duplicate()
+		
+		_particle_emitter.material = SOURCE_COLOR_PARTICLE_MATERIAL.duplicate()
+	
+	_update_trail_textures()
+
+
+func _update_trail_textures() -> void:
 	if !material:
 		return
 	
-	material.set_shader_parameter("trail_texture", trail_texture)
-	material.set_shader_parameter("alpha_texture", trail_alpha_texture)
+	if !ghost_use_source_color:
+		material.set_shader_parameter("trail_texture", trail_texture)
+		material.set_shader_parameter("alpha_texture", trail_alpha_texture)
+		
+	else:
+		_leading_sprite.material.set_shader_parameter("alpha_texture", trail_alpha_texture)
+		_particle_emitter.material.set_shader_parameter("alpha_texture", trail_alpha_texture)
 
 
 func _update_particles() -> void:
@@ -660,15 +707,16 @@ func _update_particles() -> void:
 	
 	_particle_emitter.set_instance_shader_parameter("snapshot_resolution_scale", snapshot_resolution_scale)
 	
-	_particle_emitter.set_instance_shader_parameter("sample_count", stretch_sample_count)
-	
 	_leading_sprite.set_instance_shader_parameter("atlas_h_frames", _snapshot_generator.atlas_dimensions.x)
 	
 	_leading_sprite.set_instance_shader_parameter("atlas_v_frames", _snapshot_generator.atlas_dimensions.y)
 	
 	_leading_sprite.set_instance_shader_parameter("snapshot_resolution_scale", snapshot_resolution_scale)
 	
-	_leading_sprite.set_instance_shader_parameter("sample_count", stretch_sample_count)
+	if !ghost_use_source_color:
+		_particle_emitter.set_instance_shader_parameter("sample_count", stretch_sample_count)
+		
+		_leading_sprite.set_instance_shader_parameter("sample_count", stretch_sample_count)
 
 
 func get_pivot_position() -> Vector2:
@@ -793,17 +841,25 @@ func _emit_particle(
 	_particle_counter += 1
 
 
+func _update_srgb_correction() -> void:
+	if ghost_use_source_color:
+		set_instance_shader_parameter("inverse_srgb", !get_viewport().use_hdr_2d)
+
+
 func _update_leading_sprite() -> void:
 	_leading_sprite.global_position = get_pivot_position() + Vector2(snapshot_rect.get_center())
 	
+	_leading_sprite.global_scale = Vector2(1.0, 1.0)
+	
 	_leading_sprite.visible = trail_type == TrailType.STRETCH and _last_emit_position != _current_position and _is_enabled
 	
-	_leading_sprite.set_instance_shader_parameter("manual", true)
-	_leading_sprite.set_instance_shader_parameter("manual_atlas_frame", _snapshot_generator.get_naive_current_frame() if stretch_dynamic_trail_head else _snapshot_generator.get_latest_frame())
-	_leading_sprite.set_instance_shader_parameter("manual_stretch_offset", _last_emit_position - _current_position)
-	_leading_sprite.set_instance_shader_parameter("manual_stretch_time", _current_time - _last_emit_time)
-	_leading_sprite.set_instance_shader_parameter("manual_age", 0)
-	_leading_sprite.set_instance_shader_parameter("manual_lifespan", trail_lifetime)
+	if !ghost_use_source_color:
+		_leading_sprite.set_instance_shader_parameter("manual", true)
+		_leading_sprite.set_instance_shader_parameter("manual_atlas_frame", _snapshot_generator.get_naive_current_frame() if stretch_dynamic_trail_head else _snapshot_generator.get_latest_frame())
+		_leading_sprite.set_instance_shader_parameter("manual_stretch_offset", _last_emit_position - _current_position)
+		_leading_sprite.set_instance_shader_parameter("manual_stretch_time", _current_time - _last_emit_time)
+		_leading_sprite.set_instance_shader_parameter("manual_age", 0)
+		_leading_sprite.set_instance_shader_parameter("manual_lifespan", trail_lifetime)
 
 
 ## Derived myself. Could be directly copied from somewhere.
