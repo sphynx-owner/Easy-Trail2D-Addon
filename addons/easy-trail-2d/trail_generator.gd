@@ -1,5 +1,5 @@
 @tool
-class_name TrailGenerator
+class_name EasyTrail2D
 extends CanvasGroup
 ## This class provides easy tools to generate visually accurate and dynamic 
 ## trails for existing elements, while staying performant and resource efficient
