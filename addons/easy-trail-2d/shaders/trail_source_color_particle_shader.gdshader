@@ -2,6 +2,8 @@ shader_type canvas_item;
 
 render_mode blend_mix;
 
+uniform sampler2D trail_texture: repeat_disable;
+
 uniform sampler2D alpha_texture: repeat_disable;
 
 instance uniform int atlas_h_frames;
@@ -20,6 +22,8 @@ varying flat vec2 atlas_uv_offset;
 varying flat float age;
 
 varying flat float lifespan;
+
+varying flat float random_side_offset;
 
 void vertex() {
 	// This is the texture size, as sprites resize
@@ -76,6 +80,8 @@ void vertex() {
 	
 	// get the lifespan to use
 	lifespan = INSTANCE_CUSTOM.w;
+	
+	random_side_offset = COLOR.b;
 }
 
 void fragment() {
@@ -93,5 +99,5 @@ void fragment() {
 	
 	color.a *= texture(alpha_texture, vec2(final_time, 0.5)).r;
 	
-	COLOR = color;
+	COLOR = color * texture(trail_texture, vec2(final_time, random_side_offset));
 }

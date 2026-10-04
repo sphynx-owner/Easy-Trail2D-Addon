@@ -685,6 +685,9 @@ func _update_trail_textures() -> void:
 		material.set_shader_parameter("alpha_texture", trail_alpha_texture)
 		
 	else:
+		_leading_sprite.material.set_shader_parameter("trail_texture", trail_texture)
+		_particle_emitter.material.set_shader_parameter("trail_texture", trail_texture)
+		
 		_leading_sprite.material.set_shader_parameter("alpha_texture", trail_alpha_texture)
 		_particle_emitter.material.set_shader_parameter("alpha_texture", trail_alpha_texture)
 
@@ -830,7 +833,7 @@ func _emit_particle(
 		Color(
 			stretch_time,
 			atlas_frame,
-			fmod(randi_range(0, ghost_unique_color_count - 1) if ghost_randomize_colors else _particle_counter,
+			fmod((randi_range(0, ghost_unique_color_count - 1) if ghost_randomize_colors else _particle_counter) + 0.5,
 			ghost_unique_color_count) / ghost_unique_color_count, 1.0
 		),
 		# HACK @sphynx-owner: we reserve the green channel for the age of the particle, 
