@@ -856,7 +856,7 @@ func _emit_particle(
 
 func _update_srgb_correction() -> void:
 	if ghost_use_source_color:
-		set_instance_shader_parameter("inverse_srgb", !get_viewport().use_hdr_2d)
+		_snapshot_generator.srgb_correct = !get_viewport().use_hdr_2d
 
 
 func _update_leading_sprite() -> void:
